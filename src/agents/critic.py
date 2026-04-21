@@ -55,19 +55,52 @@ class CriticAgent(BaseAgent):
             requirements=requirements,
         )
 
-        raw_response = await self._call_api(user_prompt, system_prompt)
+        # Build messages with JSON constraint
+        messages = self._build_messages(system_prompt, user_prompt)
+        messages.append({
+            "role": "user",
+            "content": "IMPORTANT: Respond with ONLY a valid JSON object. No markdown, no explanations, no code snippets. Start your response with { and end with }."
+        })
+
+        raw_response = await self.api_client.chat_completion(
+            messages=messages,
+            model=self.model,
+            temperature=self.temperature,
+            max_tokens=self.max_tokens,
+            response_format="json_object",
+        )
 
         from src.core.json_parser import StructuredOutputParser
         try:
             data = StructuredOutputParser.parse_dict(raw_response)
-        except ValueError:
-            data = {
-                "message": "Code review complete",
-                "status": "approved",
-                "issues": [],
-                "summary": "No issues found",
-                "closing_message": "Code looks good!"
+        except ValueError as e:
+            # Retry with error feedback
+            feedback_msg = {
+                "role": "user",
+                "content": f"ERROR: Your previous response was not valid JSON. Please respond with ONLY a valid JSON object. No code, no explanations. Error: {str(e)}"
             }
+            retry_messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+                feedback_msg,
+            ]
+            retry_response = await self.api_client.chat_completion(
+                messages=retry_messages,
+                model=self.model,
+                temperature=self.temperature,
+                max_tokens=self.max_tokens,
+                response_format="json_object",
+            )
+            try:
+                data = StructuredOutputParser.parse_dict(retry_response)
+            except ValueError:
+                data = {
+                    "message": "Code review complete",
+                    "status": "approved",
+                    "issues": [],
+                    "summary": "No issues found",
+                    "closing_message": "Code looks good!"
+                }
 
         # Convert issues to models
         issues = []

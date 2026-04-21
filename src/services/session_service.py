@@ -94,10 +94,7 @@ class SessionService:
         
         state.selected_idea = selected
         state.user_feedback_1 = {"idea_id": idea_id, "feedback": feedback or ""}
-        state.add_agent_message(
-            agent="system", agent_name="System", emoji="✅", role="HITL",
-            message=f"Selected idea #{idea_id}: '{selected.title}'. Starting development phase..."
-        )
+        # Note: Confirmation message is handled in frontend for proper ordering in chat
         state.resume()
         
         # Save state immediately so UI can see selected_idea

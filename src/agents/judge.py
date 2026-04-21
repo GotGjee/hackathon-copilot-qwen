@@ -46,32 +46,64 @@ class JudgeAgent(BaseAgent):
             constraints=constraints,
         )
 
-        raw_response = await self._call_api(user_prompt, system_prompt)
+        # Build messages with JSON constraint
+        messages = self._build_messages(system_prompt, user_prompt)
+        messages.append({
+            "role": "user",
+            "content": "IMPORTANT: Respond with ONLY a valid JSON object. No markdown, no explanations, no code snippets. Start your response with { and end with }."
+        })
+
+        raw_response = await self.api_client.chat_completion(
+            messages=messages,
+            model=self.model,
+            temperature=self.temperature,
+            max_tokens=self.max_tokens,
+            response_format="json_object",
+        )
 
         # Parse JSON from response
         from src.core.json_parser import StructuredOutputParser
         try:
             data = StructuredOutputParser.parse_dict(raw_response)
-        except ValueError:
-            # Fallback result
-            evaluations = [
-                IdeaEvaluation(
-                    idea_id=i.id,
-                    idea_title=i.title,
-                    scores={"feasibility": 5, "impact": 5, "technical_complexity": 5, "innovation": 5, "market_potential": 5},
-                    total_score=5.0,
-                    strengths=["Needs evaluation"],
-                    risks=["Unknown"],
-                    recommendation="Evaluate further",
-                )
-                for i in ideas
+        except ValueError as e:
+            feedback_msg = {
+                "role": "user",
+                "content": f"ERROR: Your previous response was not valid JSON. Please respond with ONLY a valid JSON object. Error: {str(e)}"
+            }
+            retry_messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+                feedback_msg,
             ]
-            return JudgeResult(
-                message="Evaluation needed",
-                evaluations=evaluations,
-                ranking=[i.id for i in ideas],
-                closing_message="Evaluation complete",
+            retry_response = await self.api_client.chat_completion(
+                messages=retry_messages,
+                model=self.model,
+                temperature=self.temperature,
+                max_tokens=self.max_tokens,
+                response_format="json_object",
             )
+            try:
+                data = StructuredOutputParser.parse_dict(retry_response)
+            except ValueError:
+                # Fallback result
+                evaluations = [
+                    IdeaEvaluation(
+                        idea_id=i.id,
+                        idea_title=i.title,
+                        scores={"feasibility": 5, "impact": 5, "technical_complexity": 5, "innovation": 5, "market_potential": 5},
+                        total_score=5.0,
+                        strengths=["Needs evaluation"],
+                        risks=["Unknown"],
+                        recommendation="Evaluate further",
+                    )
+                    for i in ideas
+                ]
+                return JudgeResult(
+                    message="Evaluation needed",
+                    evaluations=evaluations,
+                    ranking=[i.id for i in ideas],
+                    closing_message="Evaluation complete",
+                )
 
         # Convert evaluations to models
         evaluations = []

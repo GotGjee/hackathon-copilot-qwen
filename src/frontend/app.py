@@ -314,6 +314,16 @@ def handle_idea_selection(state):
                                 "idea_id": idea.get("id"),
                             })
                         if result:
+                            # Add confirmation to stream_messages in correct order
+                            st.session_state.stream_messages.append({
+                                "event_type": "message",
+                                "agent": "system",
+                                "agent_name": "System",
+                                "emoji": "🚀",
+                                "role": "HITL",
+                                "message": f"Selected idea #{idea.get('id')}: '{idea.get('title', '')}'. Starting development phase...",
+                            })
+                            st.session_state.event_index += 1
                             st.rerun()
     else:
         st.info("Waiting for ideas to be generated...")
