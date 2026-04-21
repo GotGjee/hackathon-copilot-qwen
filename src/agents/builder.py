@@ -54,10 +54,10 @@ class BuilderAgent(BaseAgent):
         # Use structured output with JSON format hint
         messages = self._build_messages(system_prompt, user_prompt)
         
-        # Add a JSON format constraint
+        # Add a JSON format constraint as user message (more reliable than system)
         messages.append({
-            "role": "system",
-            "content": "Respond with ONLY a valid JSON object. No markdown, no explanations."
+            "role": "user",
+            "content": "IMPORTANT: Respond with ONLY a valid JSON object. No markdown, no explanations, no code snippets. Start your response with { and end with }."
         })
         
         raw_response = await self.api_client.chat_completion(
@@ -74,12 +74,35 @@ class BuilderAgent(BaseAgent):
             logger.info(f"Builder parsed {len(data.get('code_files', []))} code files")
         except ValueError as e:
             logger.error(f"Builder JSON parsing failed: {e}")
-            # Generate minimal fallback
-            data = {
-                "message": "Code generation encountered an issue.",
-                "code_files": [],
-                "closing_message": "Please try again."
+            logger.warning(f"Raw response (first 500 chars): {raw_response[:500]}")
+            # Retry with error feedback - use user message to preserve context
+            feedback_msg = {
+                "role": "user",
+                "content": f"ERROR: Your previous response was not valid JSON. Please respond with ONLY a valid JSON object. No code, no explanations. Error: {str(e)}"
             }
+            messages_with_feedback = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+                feedback_msg,
+            ]
+            retry_response = await self.api_client.chat_completion(
+                messages=messages_with_feedback,
+                model=self.model,
+                temperature=self.temperature,
+                max_tokens=self.max_tokens,
+                response_format="json_object",
+            )
+            try:
+                data = StructuredOutputParser.parse_dict(retry_response)
+                logger.info(f"Builder retry succeeded: {len(data.get('code_files', []))} code files")
+            except ValueError as e2:
+                logger.error(f"Builder retry failed: {e2}")
+                # Generate minimal fallback
+                data = {
+                    "message": "Code generation encountered an issue.",
+                    "code_files": [],
+                    "closing_message": "Please try again."
+                }
 
         code_files = []
         for file_data in data.get("code_files", []):

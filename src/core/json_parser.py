@@ -193,7 +193,7 @@ class StructuredOutputParser:
     @classmethod
     def clean_response(cls, raw_text: str) -> str:
         """
-        Clean response text by removing common conversational filler.
+        Clean response text by removing common conversational filler and code fragments.
 
         Args:
             raw_text: Raw response from API
@@ -216,5 +216,41 @@ class StructuredOutputParser:
         for prefix in prefixes_to_remove:
             if cleaned.startswith(prefix):
                 cleaned = cleaned[len(prefix):].strip()
+
+        # Remove Python code fragments that sometimes appear before JSON
+        # Look for patterns like "):\n" or lines that start with code-like content
+        lines = cleaned.split('\n')
+        json_start_idx = -1
+        
+        # Find the first line that starts with { or [
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            if stripped.startswith('{') or stripped.startswith('['):
+                json_start_idx = i
+                break
+        
+        if json_start_idx >= 0:
+            # Reconstruct from the JSON start line
+            cleaned = '\n'.join(lines[json_start_idx:])
+        
+        # Remove markdown code block markers if present
+        if cleaned.startswith('```'):
+            # Skip the first line (```)
+            lines = cleaned.split('\n')
+            if len(lines) > 1:
+                cleaned = '\n'.join(lines[1:])
+        
+        if cleaned.endswith('```'):
+            cleaned = cleaned[:-3].rstrip()
+        
+        # Remove any text before the first { or [
+        first_brace = cleaned.find('{')
+        first_bracket = cleaned.find('[')
+        
+        if first_brace >= 0 or first_bracket >= 0:
+            start = min(
+                idx for idx in [first_brace, first_bracket] if idx >= 0
+            )
+            cleaned = cleaned[start:]
 
         return cleaned
