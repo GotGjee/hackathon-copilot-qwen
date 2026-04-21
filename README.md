@@ -83,7 +83,7 @@ cp .env.example .env
 uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
 
 # Start the frontend (Streamlit) - in another terminal
-streamlit run ui/app.py
+streamlit run src.frontend/app.py
 ```
 
 Open your browser to `http://localhost:8501`

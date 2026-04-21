@@ -51,26 +51,39 @@ class Orchestrator:
         state.transition_to(WorkflowLayer.IDEATION)
         logger.info(f"Starting ideation for session {state.session_id}")
 
-        agent = IdeatorAgent(self.api_client)
-        result = await agent.generate_ideas(
-            theme=state.theme,
-            constraints=state.constraints,
-        )
+        try:
+            agent = IdeatorAgent(self.api_client)
+            result = await agent.generate_ideas(
+                theme=state.theme,
+                constraints=state.constraints,
+            )
 
-        # Store ideas in state
-        state.ideas = result.ideas
+            # Store ideas in state
+            state.ideas = result.ideas
 
-        state.add_agent_message(
-            agent="ideator",
-            agent_name="Max",
-            emoji="🧠",
-            role="Creative Director",
-            message=result.message,
-        )
+            state.add_agent_message(
+                agent="ideator",
+                agent_name="Max",
+                emoji="🧠",
+                role="Creative Director",
+                message=result.message,
+            )
 
-        # Move to judging
-        state.transition_to(WorkflowLayer.JUDGING)
-        return await self.run_judging(state)
+            # Move to judging
+            state.transition_to(WorkflowLayer.JUDGING)
+            return await self.run_judging(state)
+
+        except Exception as e:
+            logger.error(f"Ideation failed for session {state.session_id}: {e}")
+            state.set_error(f"Ideation failed: {str(e)}")
+            state.add_agent_message(
+                agent="system",
+                agent_name="System",
+                emoji="❌",
+                role="Error",
+                message=f"Ideation failed: {str(e)}",
+            )
+            raise
 
     async def run_judging(self, state: SessionState) -> SessionState:
         """Layer 1, Phase 2: Evaluate and score ideas."""

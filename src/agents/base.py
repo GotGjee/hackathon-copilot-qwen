@@ -24,8 +24,12 @@ class BaseAgent(ABC):
 
     def _load_prompt_template(self, agent_type: str) -> Dict[str, Any]:
         """Load prompt template from YAML file."""
+        import os
+        filepath = os.path.join("prompts", f"{agent_type}.yaml")
         try:
-            with open(f"prompts/{agent_type}.yaml", "r") as f:
+            # Explicitly use UTF-8 encoding to handle emojis and special characters
+            # This fixes Windows 'charmap' codec decode errors
+            with open(filepath, "r", encoding="utf-8") as f:
                 return yaml.safe_load(f)
         except FileNotFoundError:
             return {"system_prompt": "", "user_prompt_template": ""}
@@ -33,7 +37,8 @@ class BaseAgent(ABC):
     def _load_agent_config(self, agent_type: str) -> Dict[str, Any]:
         """Load agent configuration from config file."""
         try:
-            with open("config/agents.yaml", "r") as f:
+            # Explicitly use UTF-8 encoding to handle emojis and special characters
+            with open("config/agents.yaml", "r", encoding="utf-8") as f:
                 config = yaml.safe_load(f)
                 return config.get("agents", {}).get(agent_type, {})
         except FileNotFoundError:

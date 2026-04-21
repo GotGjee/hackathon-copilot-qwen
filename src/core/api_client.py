@@ -28,11 +28,11 @@ class QwenAPIClient:
         base_url: Optional[str] = None,
         default_model: Optional[str] = None,
         max_retries: int = 3,
-        timeout: float = 60.0,
+        timeout: float = 300.0,
     ):
         self.api_key = api_key or os.getenv("QWEN_API_KEY", "")
-        self.base_url = base_url or os.getenv("QWEN_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
-        self.default_model = default_model or os.getenv("DEFAULT_MODEL", "qwen-plus")
+        self.base_url = base_url or os.getenv("QWEN_BASE_URL", "https://coding-intl.dashscope.aliyuncs.com/v1")
+        self.default_model = default_model or os.getenv("DEFAULT_MODEL", "qwen3.6-plus")
         self.max_retries = max_retries
         self.timeout = timeout
 
@@ -104,7 +104,7 @@ class QwenAPIClient:
                 await asyncio.sleep(2 ** attempt)  # Exponential backoff
 
             except httpx.RequestError as e:
-                logger.error(f"Request error on attempt {attempt + 1}: {str(e)}")
+                logger.error(f"Request error on attempt {attempt + 1}: {repr(e)}")
                 if attempt == self.max_retries - 1:
                     raise
                 await asyncio.sleep(2 ** attempt)

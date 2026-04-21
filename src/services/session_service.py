@@ -64,7 +64,12 @@ class SessionService:
         if not state:
             raise ValueError(f"Session {session_id} not found")
 
-        return await self.orchestrator.run_ideation(state)
+        try:
+            return await self.orchestrator.run_ideation(state)
+        except Exception as e:
+            # Save error state before re-raising
+            self.save_session(session_id)
+            raise
 
     async def select_idea(self, session_id: str, idea_id: int, feedback: Optional[str] = None) -> SessionState:
         """Handle idea selection at HITL 1."""

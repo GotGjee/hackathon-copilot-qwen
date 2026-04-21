@@ -161,8 +161,15 @@ async def start_session(session_id: str):
             "ideas": [i.model_dump() for i in state.ideas],
             "message": "Ideation and judging complete. Please select an idea.",
         }
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # Return detailed error for debugging
+        raise HTTPException(status_code=500, detail={
+            "error": type(e).__name__,
+            "message": str(e),
+            "hint": "Check API key, network connection, and that the Qwen API is accessible."
+        })
 
 
 @app.post("/sessions/{session_id}/select-idea")
