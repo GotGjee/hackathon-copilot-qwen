@@ -33,12 +33,16 @@ class StructuredOutputParser:
         # Try to find JSON block in markdown code fence
         match = cls.JSON_BLOCK_PATTERN.search(raw_text)
         if match:
-            return match.group(1).strip()
+            json_str = match.group(1).strip()
+            # Verify this is complete JSON by checking brace balance
+            if cls._is_balanced(json_str):
+                return json_str
 
-        # Try to find JSON object pattern
-        match = cls.JSON_OBJECT_PATTERN.search(raw_text)
-        if match:
-            return match.group(0).strip()
+        # Try to find JSON object pattern and extract complete JSON
+        # by finding the outermost braces
+        result = cls._extract_complete_json(raw_text)
+        if result:
+            return result
 
         # Try to parse the whole text as JSON
         cleaned = raw_text.strip()
@@ -46,6 +50,81 @@ class StructuredOutputParser:
             return cleaned
 
         raise ValueError(f"Could not extract JSON from response: {raw_text[:100]}...")
+
+    @classmethod
+    def _is_balanced(cls, text: str) -> bool:
+        """Check if braces are balanced in the text."""
+        count = 0
+        in_string = False
+        escape_next = False
+        for char in text:
+            if escape_next:
+                escape_next = False
+                continue
+            if char == '\\':
+                escape_next = True
+                continue
+            if char == '"' and not escape_next:
+                in_string = not in_string
+                continue
+            if not in_string:
+                if char == '{':
+                    count += 1
+                elif char == '}':
+                    count -= 1
+        return count == 0
+
+    @classmethod
+    def _extract_complete_json(cls, raw_text: str) -> Optional[str]:
+        """
+        Extract complete JSON by finding matching braces.
+        Handles nested JSON within string values.
+        If JSON is truncated, tries to close it.
+        """
+        # Find the first opening brace
+        start_idx = raw_text.find('{')
+        if start_idx == -1:
+            return None
+
+        # Count braces to find the matching closing brace
+        brace_count = 0
+        in_string = False
+        escape_next = False
+        last_string_end = -1
+        for i, char in enumerate(raw_text[start_idx:], start_idx):
+            if escape_next:
+                escape_next = False
+                continue
+            if char == '\\':
+                escape_next = True
+                continue
+            if char == '"':
+                in_string = not in_string
+                if not in_string:
+                    last_string_end = i
+                continue
+            if not in_string:
+                if char == '{':
+                    brace_count += 1
+                elif char == '}':
+                    brace_count -= 1
+                    if brace_count == 0:
+                        return raw_text[start_idx:i+1]
+
+        # If we get here, JSON is truncated. Try to close it.
+        if brace_count > 0:
+            # Close any open string first
+            result = raw_text[start_idx:]
+            if in_string:
+                result = result[:last_string_end - start_idx + 1] + '"'
+                in_string = False
+            # Close open braces
+            while brace_count > 0:
+                result += '}'
+                brace_count -= 1
+            return result
+
+        return None
 
     @classmethod
     def parse_and_validate(cls, raw_text: str, schema: Type[BaseModel]) -> BaseModel:
@@ -90,7 +169,10 @@ class StructuredOutputParser:
         Raises:
             ValueError: If parsing fails
         """
-        json_str = cls.extract_json(raw_text)
+        # Clean the response first
+        cleaned = cls.clean_response(raw_text)
+        
+        json_str = cls.extract_json(cleaned)
 
         try:
             data = json.loads(json_str)

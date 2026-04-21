@@ -6,7 +6,7 @@ Main entry point for the backend API.
 from contextlib import asynccontextmanager
 from typing import Any, Dict, Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -122,6 +122,36 @@ async def create_session(request: CreateSessionRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.websocket("/ws/{session_id}")
+async def websocket_endpoint(websocket: WebSocket, session_id: str):
+    """WebSocket endpoint for real-time event streaming."""
+    from src.core.events import broadcaster
+    
+    await websocket.accept()
+    await broadcaster.connect(websocket, session_id)
+    
+    try:
+        while True:
+            # Keep connection alive, wait for messages from client
+            data = await websocket.receive_text()
+            # Client can send ping/pong or control messages
+            if data == "ping":
+                await websocket.send_text("pong")
+    except WebSocketDisconnect:
+        await broadcaster.disconnect(websocket, session_id)
+    except Exception:
+        await broadcaster.disconnect(websocket, session_id)
+
+
+@app.get("/sessions/{session_id}/events")
+async def get_events(session_id: str, since_index: int = 0):
+    """Get streaming events for a session via HTTP polling."""
+    from src.core.events import broadcaster
+    
+    events = broadcaster.store.get_events(session_id, since_index)
+    return {"events": events, "total": broadcaster.store.get_count(session_id)}
+
+
 @app.get("/sessions/{session_id}")
 async def get_session(session_id: str):
     """Get session status and state."""
@@ -139,7 +169,9 @@ async def get_session(session_id: str):
         "current_layer": state.current_layer.value,
         "is_paused": state.is_paused,
         "pause_reason": state.pause_reason,
+        "ideas": [i.model_dump() for i in state.ideas],
         "ideas_count": len(state.ideas),
+        "evaluations": [e.model_dump() for e in state.evaluations],
         "selected_idea": state.selected_idea.model_dump() if state.selected_idea else None,
         "agent_log": [m.model_dump() for m in state.agent_log[-20:]],
     }

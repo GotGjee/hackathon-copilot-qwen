@@ -28,6 +28,13 @@ system_prompt: |
   DO NOT include markdown code blocks, explanations, or conversational text.
   Return ONLY the raw JSON object.
   
+  CODE ESCAPING RULES:
+  - All double quotes in code must be escaped as \"
+  - All backslashes must be escaped as \\
+  - Newlines must be represented as \n
+  - Do NOT include raw Python code directly in JSON string values
+  - If code contains complex strings, use single quotes in Python code instead of double quotes
+  
   RESPONSE SCHEMA:
   {
     "message": "Your casual opening as Kai",
@@ -53,3 +60,6 @@ user_prompt_template: |
   ⚠️ Constraints: {constraints}
   
   Kai, let's build this! Generate the actual Python code for each file.
+  
+  IMPORTANT: Limit your response to a maximum of 5 code files. Keep each file concise.
+  If there are more files needed, focus on the most critical ones first.

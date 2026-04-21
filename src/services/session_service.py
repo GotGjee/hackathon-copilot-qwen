@@ -3,6 +3,7 @@ Session Service
 Handles session CRUD operations and orchestrator management.
 """
 
+import asyncio
 import uuid
 from typing import Any, Dict, Optional
 
@@ -59,25 +60,63 @@ class SessionService:
         return self.state_manager.list_sessions()
 
     async def start_workflow(self, session_id: str) -> SessionState:
-        """Start the ideation workflow."""
+        """Start the ideation workflow as a background task."""
         state = self.get_session(session_id)
         if not state:
             raise ValueError(f"Session {session_id} not found")
-
+        
+        # Run ideation in background so API returns immediately
+        asyncio.create_task(self._run_ideation_background(session_id, state))
+        
+        return state
+    
+    async def _run_ideation_background(self, session_id: str, state: SessionState):
+        """Run the ideation workflow in the background."""
         try:
-            return await self.orchestrator.run_ideation(state)
+            result = await self.orchestrator.run_ideation(state)
+            self.save_session(session_id)
+            return result
         except Exception as e:
-            # Save error state before re-raising
+            state.set_error(f"Ideation failed: {str(e)}")
             self.save_session(session_id)
             raise
 
     async def select_idea(self, session_id: str, idea_id: int, feedback: Optional[str] = None) -> SessionState:
-        """Handle idea selection at HITL 1."""
+        """Handle idea selection at HITL 1 - runs in background."""
         state = self.get_session(session_id)
         if not state:
             raise ValueError(f"Session {session_id} not found")
-
-        return await self.orchestrator.handle_idea_selection(state, idea_id, feedback)
+        
+        # Find and store selected idea immediately so UI can show it
+        selected = next((i for i in state.ideas if i.id == idea_id), None)
+        if not selected:
+            raise ValueError(f"Idea with id {idea_id} not found")
+        
+        state.selected_idea = selected
+        state.user_feedback_1 = {"idea_id": idea_id, "feedback": feedback or ""}
+        state.add_agent_message(
+            agent="system", agent_name="System", emoji="✅", role="HITL",
+            message=f"Selected idea #{idea_id}: '{selected.title}'. Starting development phase..."
+        )
+        state.resume()
+        
+        # Save state immediately so UI can see selected_idea
+        self.save_session(session_id)
+        
+        # Run planning → building → critiquing in background
+        asyncio.create_task(self._run_development_background(session_id, state))
+        
+        return state
+    
+    async def _run_development_background(self, session_id: str, state: SessionState):
+        """Run the full development workflow in background."""
+        try:
+            result = await self.orchestrator.run_planning(state)
+            self.save_session(session_id)
+        except Exception as e:
+            state.set_error(f"Planning failed: {str(e)}")
+            self.save_session(session_id)
+            raise
 
     async def approve_code(self, session_id: str, feedback: Optional[str] = None) -> SessionState:
         """Handle code approval at HITL 2."""

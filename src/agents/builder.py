@@ -5,6 +5,7 @@ Generates actual Python/FastAPI code for the project.
 
 from typing import List
 from pydantic import BaseModel, Field
+from loguru import logger
 
 from src.agents.base import BaseAgent
 from src.core.api_client import QwenAPIClient
@@ -50,34 +51,48 @@ class BuilderAgent(BaseAgent):
             constraints=constraints,
         )
 
-        raw_response = await self._call_api(user_prompt, system_prompt)
+        # Use structured output with JSON format hint
+        messages = self._build_messages(system_prompt, user_prompt)
+        
+        # Add a JSON format constraint
+        messages.append({
+            "role": "system",
+            "content": "Respond with ONLY a valid JSON object. No markdown, no explanations."
+        })
+        
+        raw_response = await self.api_client.chat_completion(
+            messages=messages,
+            model=self.model,
+            temperature=self.temperature,
+            max_tokens=self.max_tokens,
+            response_format="json_object",
+        )
 
         from src.core.json_parser import StructuredOutputParser
         try:
             data = StructuredOutputParser.parse_dict(raw_response)
-        except ValueError:
+            logger.info(f"Builder parsed {len(data.get('code_files', []))} code files")
+        except ValueError as e:
+            logger.error(f"Builder JSON parsing failed: {e}")
+            # Generate minimal fallback
             data = {
-                "message": "Code generation complete",
-                "code_files": [
-                    {
-                        "filepath": "src/main.py",
-                        "description": "Main application entry point",
-                        "content": "from fastapi import FastAPI\n\napp = FastAPI()\n\n@app.get('/')\nasync def root():\n    return {'message': 'Hello World'}",
-                        "language": "python"
-                    }
-                ],
-                "closing_message": "Code ready for review!"
+                "message": "Code generation encountered an issue.",
+                "code_files": [],
+                "closing_message": "Please try again."
             }
 
         code_files = []
         for file_data in data.get("code_files", []):
-            code_file = CodeFileResult(
-                filepath=file_data.get("filepath", ""),
-                description=file_data.get("description", ""),
-                content=file_data.get("content", ""),
-                language=file_data.get("language", "python"),
-            )
-            code_files.append(code_file)
+            try:
+                code_file = CodeFileResult(
+                    filepath=file_data.get("filepath", ""),
+                    description=file_data.get("description", ""),
+                    content=file_data.get("content", ""),
+                    language=file_data.get("language", "python"),
+                )
+                code_files.append(code_file)
+            except Exception as e:
+                logger.warning(f"Failed to parse code file: {e}")
 
         return BuilderResult(
             message=data.get("message", ""),

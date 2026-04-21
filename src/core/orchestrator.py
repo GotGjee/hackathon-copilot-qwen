@@ -12,6 +12,10 @@ from loguru import logger
 from src.core.state import SessionState, WorkflowLayer
 from src.core.api_client import QwenAPIClient
 from src.core.json_parser import StructuredOutputParser
+from src.core.events import (
+    emit_agent_thinking, emit_agent_message, 
+    emit_phase_start, emit_phase_complete, emit_error
+)
 
 
 class Orchestrator:
@@ -50,6 +54,13 @@ class Orchestrator:
 
         state.transition_to(WorkflowLayer.IDEATION)
         logger.info(f"Starting ideation for session {state.session_id}")
+        
+        # Emit streaming events
+        await emit_phase_start(state.session_id, "ideation", "🧠 Max is brainstorming ideas...")
+        await emit_agent_thinking(
+            state.session_id, "ideator", "Max", "🧠", "Creative Director",
+            "Brainstorming creative concepts for your theme...", "ideation"
+        )
 
         try:
             agent = IdeatorAgent(self.api_client)
@@ -61,6 +72,11 @@ class Orchestrator:
             # Store ideas in state
             state.ideas = result.ideas
 
+            await emit_agent_message(
+                state.session_id, "ideator", "Max", "🧠", "Creative Director",
+                result.message, "ideation", {"ideas_count": len(result.ideas)}
+            )
+            
             state.add_agent_message(
                 agent="ideator",
                 agent_name="Max",
@@ -90,6 +106,13 @@ class Orchestrator:
         from src.agents.judge import JudgeAgent
 
         logger.info(f"Starting judging for session {state.session_id}")
+        
+        # Emit streaming events
+        await emit_phase_start(state.session_id, "judging", "⚖️ Sarah is evaluating ideas...")
+        await emit_agent_thinking(
+            state.session_id, "judge", "Sarah", "⚖️", "Pragmatic Lead",
+            "Analyzing feasibility and scoring each idea...", "judging"
+        )
 
         agent = JudgeAgent(self.api_client)
         result = await agent.evaluate_ideas(
@@ -99,6 +122,13 @@ class Orchestrator:
 
         # Store evaluations
         state.evaluations = result.evaluations
+
+        await emit_agent_message(
+            state.session_id, "judge", "Sarah", "⚖️", "Pragmatic Lead",
+            f"Evaluated {len(result.evaluations)} ideas. Top pick: {result.ranking[0] if result.ranking else 'N/A'}",
+            "judging", {"ranking": result.ranking}
+        )
+        await emit_phase_complete(state.session_id, "judging")
 
         state.add_agent_message(
             agent="judge",
@@ -146,6 +176,12 @@ class Orchestrator:
 
         state.transition_to(WorkflowLayer.PLANNING)
         logger.info(f"Starting planning for session {state.session_id}")
+        
+        await emit_phase_start(state.session_id, "planning", "📋 Dave is creating milestones...")
+        await emit_agent_thinking(
+            state.session_id, "planner", "Dave", "📋", "Project Manager",
+            "Breaking down the project into manageable milestones...", "planning"
+        )
 
         agent = PlannerAgent(self.api_client)
         result = await agent.create_milestones(
@@ -157,6 +193,13 @@ class Orchestrator:
         )
 
         state.milestones = result.milestones
+
+        await emit_agent_message(
+            state.session_id, "planner", "Dave", "📋", "Project Manager",
+            f"Created {len(result.milestones)} milestones. Total estimated: {result.total_hours}h",
+            "planning", {"milestones": [m.title for m in result.milestones]}
+        )
+        await emit_phase_complete(state.session_id, "planning")
 
         state.add_agent_message(
             agent="planner",
@@ -174,6 +217,12 @@ class Orchestrator:
 
         state.transition_to(WorkflowLayer.ARCHITECTING)
         logger.info(f"Starting architecture for session {state.session_id}")
+        
+        await emit_phase_start(state.session_id, "architecting", "🏗️ Luna is designing the architecture...")
+        await emit_agent_thinking(
+            state.session_id, "architect", "Luna", "🏗️", "Tech Lead",
+            "Designing the system architecture and file structure...", "architecting"
+        )
 
         agent = ArchitectAgent(self.api_client)
         result = await agent.design_architecture(
@@ -186,6 +235,12 @@ class Orchestrator:
         )
 
         state.architecture = result.model_dump(mode='json') if hasattr(result, 'model_dump') else result
+
+        await emit_agent_message(
+            state.session_id, "architect", "Luna", "🏗️", "Tech Lead",
+            "Architecture design complete!", "architecting"
+        )
+        await emit_phase_complete(state.session_id, "architecting")
 
         state.add_agent_message(
             agent="architect",
@@ -203,6 +258,12 @@ class Orchestrator:
 
         state.transition_to(WorkflowLayer.BUILDING)
         logger.info(f"Starting code generation for session {state.session_id}")
+        
+        await emit_phase_start(state.session_id, "building", "🔨 Kai is writing the code...")
+        await emit_agent_thinking(
+            state.session_id, "builder", "Kai", "🔨", "Senior Developer",
+            "Generating code files based on the architecture...", "building"
+        )
 
         agent = BuilderAgent(self.api_client)
         result = await agent.generate_code(
@@ -213,11 +274,21 @@ class Orchestrator:
         )
 
         # Store generated code files
+        from src.core.state import CodeFile
         for file_data in result.code_files:
-            state.code_artifacts[file_data["filepath"]] = {
-                "content": file_data["content"],
-                "description": file_data.get("description", ""),
-            }
+            state.code_artifacts[file_data.filepath] = CodeFile(
+                filepath=file_data.filepath,
+                description=file_data.description,
+                content=file_data.content,
+                language=file_data.language,
+            )
+
+        await emit_agent_message(
+            state.session_id, "builder", "Kai", "🔨", "Senior Developer",
+            f"Generated {len(result.code_files)} files!", "building",
+            {"files": [f.filepath for f in result.code_files]}
+        )
+        await emit_phase_complete(state.session_id, "building")
 
         state.add_agent_message(
             agent="builder",
@@ -235,6 +306,12 @@ class Orchestrator:
 
         state.transition_to(WorkflowLayer.CRITIQUING)
         logger.info(f"Starting code review for session {state.session_id}")
+        
+        await emit_phase_start(state.session_id, "critiquing", "🔍 Rex is reviewing the code...")
+        await emit_agent_thinking(
+            state.session_id, "critic", "Rex", "🔍", "QA Lead",
+            "Analyzing code quality, security, and best practices...", "critiquing"
+        )
 
         agent = CriticAgent(self.api_client)
         result = await agent.review_code(
@@ -245,6 +322,12 @@ class Orchestrator:
         state.critic_report = result.model_dump(mode='json') if hasattr(result, 'model_dump') else result
 
         if result.status == "approved":
+            await emit_agent_message(
+                state.session_id, "critic", "Rex", "🔍", "QA Lead",
+                "Code approved! No issues found.", "critiquing"
+            )
+            await emit_phase_complete(state.session_id, "critiquing")
+            
             state.add_agent_message(
                 agent="critic",
                 agent_name="Rex",
@@ -256,6 +339,11 @@ class Orchestrator:
             state.pause_for_hitl("Code review passed. Please review the generated code.")
             state.transition_to(WorkflowLayer.HITL_2)
         else:
+            await emit_agent_message(
+                state.session_id, "critic", "Rex", "🔍", "QA Lead",
+                f"Found {len(result.issues)} issues. Triggering refinement...", "critiquing"
+            )
+            
             state.add_agent_message(
                 agent="critic",
                 agent_name="Rex",
@@ -267,6 +355,11 @@ class Orchestrator:
             # Check refinement limit
             state.refinement_count += 1
             if state.refinement_count >= state.max_refinements:
+                await emit_agent_message(
+                    state.session_id, "system", "System", "⚠️", "System",
+                    "Max refinements reached. Proceeding to human review.", "critiquing"
+                )
+                
                 state.add_agent_message(
                     agent="system",
                     agent_name="System",
@@ -278,6 +371,10 @@ class Orchestrator:
                 state.transition_to(WorkflowLayer.HITL_2)
             else:
                 # Loop back to building for refinement
+                await emit_agent_message(
+                    state.session_id, "system", "System", "🔄", "System",
+                    f"Refinement cycle {state.refinement_count}/{state.max_refinements}. Rebuilding...", "critiquing"
+                )
                 return await self.run_building(state)
 
         return state
@@ -317,10 +414,16 @@ class Orchestrator:
 
         state.transition_to(WorkflowLayer.PITCHING)
         logger.info(f"Starting pitch generation for session {state.session_id}")
+        
+        await emit_phase_start(state.session_id, "pitching", "🎤 Nova is preparing the pitch...")
 
         selected = state.selected_idea
 
         # Generate narrative
+        await emit_agent_thinking(
+            state.session_id, "pitch_strategist", "Nova", "🎤", "Storyteller",
+            "Crafting the perfect narrative for your project...", "pitching"
+        )
         pitch_agent = PitchStrategistAgent(self.api_client)
         narrative_result = await pitch_agent.create_narrative(
             title=selected.title if selected else "",
@@ -329,6 +432,11 @@ class Orchestrator:
             target_users=selected.target_users if selected else "",
         )
         state.narrative = narrative_result
+
+        await emit_agent_message(
+            state.session_id, "pitch_strategist", "Nova", "🎤", "Storyteller",
+            "Narrative created!", "pitching"
+        )
 
         state.add_agent_message(
             agent="pitch_strategist",
@@ -339,12 +447,21 @@ class Orchestrator:
         )
 
         # Generate slides
+        await emit_agent_thinking(
+            state.session_id, "slide_agent", "Nova (Slides)", "📊", "Presentation Designer",
+            "Designing the slide deck layout...", "pitching"
+        )
         slide_agent = SlideAgent(self.api_client)
         slides_result = await slide_agent.create_slides(
             title=selected.title if selected else "",
             narrative=narrative_result,
         )
         state.slides = slides_result
+
+        await emit_agent_message(
+            state.session_id, "slide_agent", "Nova (Slides)", "📊", "Presentation Designer",
+            "Slide deck outline ready!", "pitching"
+        )
 
         state.add_agent_message(
             agent="slide_agent",
@@ -355,6 +472,10 @@ class Orchestrator:
         )
 
         # Generate script
+        await emit_agent_thinking(
+            state.session_id, "script_agent", "Nova (Script)", "🎙️", "Speech Writer",
+            "Writing the speaker script...", "pitching"
+        )
         script_agent = ScriptAgent(self.api_client)
         script_result = await script_agent.create_script(
             title=selected.title if selected else "",
@@ -362,6 +483,12 @@ class Orchestrator:
             narrative=narrative_result,
         )
         state.script = script_result
+
+        await emit_agent_message(
+            state.session_id, "script_agent", "Nova (Script)", "🎙️", "Speech Writer",
+            "Speaker script complete!", "pitching"
+        )
+        await emit_phase_complete(state.session_id, "pitching")
 
         state.add_agent_message(
             agent="script_agent",

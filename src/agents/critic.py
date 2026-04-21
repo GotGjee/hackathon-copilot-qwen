@@ -3,7 +3,7 @@ Critic Agent (Rex) - QA Lead
 Reviews generated code for bugs, security issues, and logic flaws.
 """
 
-from typing import Dict, List
+from typing import Dict, List, Union
 from pydantic import BaseModel, Field
 
 from src.agents.base import BaseAgent
@@ -36,7 +36,7 @@ class CriticAgent(BaseAgent):
 
     async def review_code(
         self,
-        code_artifacts: Dict[str, dict],
+        code_artifacts: Dict[str, Union[dict, object]],
         requirements: str,
     ) -> CriticResult:
         """Review generated code for issues."""
@@ -44,9 +44,9 @@ class CriticAgent(BaseAgent):
         system_prompt = template.get("system_prompt", "")
         user_template = template.get("user_prompt_template", "")
 
-        # Format code artifacts for the prompt
+        # Format code artifacts for the prompt (handle both dict and CodeFile objects)
         code_summary = "\n".join([
-            f"File: {filepath}\n{artifact.get('content', '')[:500]}..."
+            f"File: {filepath}\n{artifact.get('content', '') if isinstance(artifact, dict) else getattr(artifact, 'content', '')}"
             for filepath, artifact in code_artifacts.items()
         ])
 

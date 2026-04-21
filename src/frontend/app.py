@@ -1,36 +1,113 @@
 """
 Hackathon Copilot - Streamlit Frontend
-Interactive UI for the hackathon copilot system.
+Chat-style UI with agent avatars and real-time event streaming.
 """
 
 import streamlit as st
 import requests
 import time
-
+import json
+import os
 
 # Configuration
-try:
-    API_BASE_URL = st.secrets.get("API_BASE_URL", "http://localhost:8000")
-except Exception:
-    API_BASE_URL = "http://localhost:8000"
+API_BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:8000")
+
+# Agent avatar config - maps agent name to avatar color and icon
+AGENT_AVATARS = {
+    "Max": {"icon": "🧠", "color": "#FF6B6B"},
+    "Sarah": {"icon": "⚖️", "color": "#4ECDC4"},
+    "Dave": {"icon": "📋", "color": "#45B7D1"},
+    "Luna": {"icon": "🏗️", "color": "#96CEB4"},
+    "Kai": {"icon": "🔨", "color": "#FFEAA7"},
+    "Rex": {"icon": "🔍", "color": "#DDA0DD"},
+    "Nova": {"icon": "🎤", "color": "#F8B500"},
+    "Nova (Slides)": {"icon": "📊", "color": "#9B59B6"},
+    "Nova (Script)": {"icon": "🎙️", "color": "#E74C3C"},
+    "System": {"icon": "🚀", "color": "#2ECC71"},
+}
 
 
-def api_request(method: str, endpoint: str, data: dict = None):
+def api_request(method: str, endpoint: str, data: dict = None) -> dict | None:
     """Make API request with error handling."""
+    response = None
     try:
         url = f"{API_BASE_URL}{endpoint}"
         if method == "GET":
-            response = requests.get(url)
+            response = requests.get(url, timeout=10)
         elif method == "POST":
-            response = requests.post(url, json=data)
+            response = requests.post(url, json=data or {}, timeout=10)
         response.raise_for_status()
         return response.json()
     except requests.exceptions.ConnectionError:
-        st.error("Cannot connect to API. Make sure the backend is running.")
         return None
     except requests.exceptions.HTTPError as e:
         st.error(f"API Error: {e}")
         return None
+    except requests.exceptions.Timeout:
+        return None
+
+
+def poll_events(session_id: str, since_index: int = 0):
+    """Poll for new events from the server."""
+    try:
+        url = f"{API_BASE_URL}/sessions/{session_id}/events"
+        params = {"since_index": since_index}
+        response = requests.get(url, params=params, timeout=3)
+        if response.status_code == 200:
+            return response.json()
+    except Exception:
+        pass
+    return {"events": [], "total": since_index}
+
+
+def get_agent_info(msg: dict) -> dict:
+    """Get agent avatar info from config."""
+    agent_name = msg.get("agent_name", "System")
+    avatar = AGENT_AVATARS.get(agent_name, {"icon": "🤖", "color": "#95A5A6"})
+    return avatar
+
+
+def render_chat_bubble(msg: dict):
+    """Render a single chat bubble message."""
+    event_type = msg.get("event_type", "message")
+    emoji = msg.get("emoji", "")
+    agent_name = msg.get("agent_name", "System")
+    role = msg.get("role", "")
+    message = msg.get("message", "")
+    avatar = get_agent_info(msg)
+    
+    # Chat bubble styling
+    if event_type == "thinking":
+        st.info(f"{emoji} **{agent_name}** *({role})* is thinking...\n\n{message}")
+    elif event_type == "phase_start":
+        st.success(f"{emoji} **{agent_name}**: {message}")
+    elif event_type == "phase_complete":
+        st.success(f"{emoji} **{agent_name}**: {message}")
+    elif event_type == "error":
+        st.error(f"{emoji} **{agent_name}**: {message}")
+    elif event_type == "message":
+        # Full chat bubble style
+        st.markdown(
+            f"""
+            <div style="margin-bottom: 8px; display: flex; align-items: flex-start; gap: 10px;">
+                <div style="width: 36px; height: 36px; border-radius: 50%; background: {avatar['color']}; 
+                            display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 18px;">
+                    {avatar['icon']}
+                </div>
+                <div style="flex: 1;">
+                    <div style="margin-bottom: 2px;">
+                        <strong style="color: {avatar['color']};">{agent_name}</strong>
+                        <span style="color: #888; font-size: 0.85em; margin-left: 8px;">{role}</span>
+                    </div>
+                    <div style="background: #f0f2f6; border-radius: 12px; padding: 12px 16px; 
+                                max-width: 85%; color: #333; line-height: 1.5;">
+                        {message}
+                    </div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
 
 def main():
@@ -40,14 +117,40 @@ def main():
         layout="wide",
     )
 
+    # Custom CSS for chat-like interface
+    st.markdown("""
+        <style>
+            .main .block-container { padding-top: 1rem; }
+            /* Hide Streamlit branding */
+            #MainMenu {visibility: hidden;}
+            footer {visibility: hidden;}
+            /* Chat container */
+            .chat-container { 
+                background: white; 
+                border-radius: 16px; 
+                padding: 20px; 
+                border: 1px solid #e0e0e0;
+                min-height: 400px;
+                max-height: 600px;
+                overflow-y: auto;
+            }
+        </style>
+    """, unsafe_allow_html=True)
+
     st.title("🚀 Hackathon Copilot")
-    st.caption("AI-Powered Multi-Agent System for Hackathon Success")
+    st.caption("AI-Powered Multi-Agent Team for Hackathon Success")
 
     # Initialize session state
     if "session_id" not in st.session_state:
         st.session_state.session_id = None
     if "workflow_started" not in st.session_state:
         st.session_state.workflow_started = False
+    if "stream_messages" not in st.session_state:
+        st.session_state.stream_messages = []
+    if "event_index" not in st.session_state:
+        st.session_state.event_index = 0
+    if "last_scroll" not in st.session_state:
+        st.session_state.last_scroll = 0
 
     # Sidebar
     with st.sidebar:
@@ -56,10 +159,15 @@ def main():
         if st.button("🆕 New Session"):
             st.session_state.session_id = None
             st.session_state.workflow_started = False
+            st.session_state.stream_messages = []
+            st.session_state.event_index = 0
             st.rerun()
 
         if st.session_state.session_id:
             st.success(f"Session: `{st.session_state.session_id}`")
+        
+        st.divider()
+        st.caption("💡 Create a session and click Start to watch your AI team work!")
 
     # Main flow
     if not st.session_state.session_id:
@@ -92,17 +200,37 @@ def show_create_session():
 
         if result:
             st.session_state.session_id = result["session_id"]
+            st.session_state.workflow_started = False
+            st.session_state.stream_messages = []
+            st.session_state.event_index = 0
             st.success(f"Session created: `{result['session_id']}`")
             st.rerun()
 
 
 def show_session_flow():
-    """Show main workflow."""
+    """Show main workflow with chat-style UI and HTTP polling."""
     session_id = st.session_state.session_id
 
+    # Poll for new events
+    event_data = poll_events(session_id, st.session_state.event_index)
+    new_events = event_data.get("events", [])
+    
+    has_new_content = len(new_events) > 0
+    
+    if new_events:
+        for event in new_events:
+            st.session_state.stream_messages.append(event)
+            st.session_state.event_index = event.get("index", 0) + 1
+    
     # Get session state
-    with st.spinner("Loading session..."):
-        state = api_request("GET", f"/sessions/{session_id}")
+    state = api_request("GET", f"/sessions/{session_id}")
+    
+    # Track previous layer to detect state changes
+    prev_layer = st.session_state.get("prev_layer", "")
+    current_layer = state.get("current_layer", "") if state else ""
+    if current_layer != prev_layer:
+        has_new_content = True
+        st.session_state.prev_layer = current_layer
 
     if not state:
         st.error("Failed to load session")
@@ -110,35 +238,91 @@ def show_session_flow():
 
     # Progress indicator
     st.progress(get_progress_value(state["current_layer"]))
-    st.caption(f"Current Phase: **{state['current_layer'].replace('_', ' ').title()}**")
+    status_text = get_status_text(state["current_layer"])
+    st.caption(f"Current Phase: **{status_text}**")
 
-    # Agent messages
-    if state.get("agent_log"):
-        st.subheader("💬 Agent Messages")
-        for msg in state["agent_log"][-10:]:
-            st.chat_message(msg.get("agent", "system")).write(
-                f"{msg.get('emoji', '')} **{msg.get('agent_name', '')}** ({msg.get('role', '')}): {msg.get('message', '')}"
-            )
+    # Chat container
+    st.subheader("💬 Team Chat")
+    
+    # Render all messages in chat container
+    chat_container = st.container()
+    with chat_container:
+        for msg in st.session_state.stream_messages:
+            render_chat_bubble(msg)
+        
+        # Show persisted messages from agent_log (avoid duplicates)
+        if state.get("agent_log"):
+            recent_messages = {m.get("message", "") for m in st.session_state.stream_messages[-20:]}
+            for msg in state["agent_log"][-20:]:
+                if msg.get("message", "") not in recent_messages:
+                    # Convert agent_log to event format for rendering
+                    event_msg = {
+                        "agent": msg.get("agent", "system"),
+                        "agent_name": msg.get("agent_name", "System"),
+                        "emoji": msg.get("emoji", "🤖"),
+                        "role": msg.get("role", ""),
+                        "message": msg.get("message", ""),
+                        "event_type": "message",
+                    }
+                    render_chat_bubble(event_msg)
 
-    # Phase-specific UI
-    if state["current_layer"] in ["hitl_1", "judging"]:
+    # Add manual refresh button to avoid flickering
+    if st.button("🔄 Refresh", key="manual_refresh"):
+        st.rerun()
+
+    # Phase-specific UI - check for selected_idea first to hide selection after choice
+    if state["current_layer"] == "hitl_1" and not state.get("selected_idea"):
         handle_idea_selection(state)
+    elif state["current_layer"] == "hitl_1" and state.get("selected_idea"):
+        # Idea was selected, show confirmation and working status
+        selected = state.get("selected_idea", {})
+        st.success(f"✅ Selected: **{selected.get('title', '')}** - AI is now developing...")
+    elif state["current_layer"] == "judging":
+        st.info("⏳ AI is evaluating ideas... Please wait.")
     elif state["current_layer"] == "hitl_2":
         handle_code_review(state)
     elif state["current_layer"] == "complete":
         handle_completion(state)
+    elif state["current_layer"] == "error":
+        st.error(f"❌ Error: {state.get('pause_reason', 'Unknown error')}")
     elif not state["is_paused"] and not st.session_state.workflow_started:
         handle_auto_start(state)
+    elif not state["is_paused"] and st.session_state.workflow_started:
+        # Show working status with progress
+        st.info(f"🔄 AI is working... {get_status_text(state['current_layer'])}")
+
+
+def get_status_text(layer: str) -> str:
+    """Convert workflow layer to human-readable status."""
+    status_map = {
+        "idle": "🟡 Waiting to start",
+        "ideation": "🧠 Brainstorming ideas...",
+        "judging": "⚖️ Evaluating ideas...",
+        "hitl_1": "⏸️ Waiting for your input",
+        "planning": "📋 Planning milestones...",
+        "architecting": "🏗️ Designing architecture...",
+        "building": "🔨 Writing code...",
+        "critiquing": "🔍 Reviewing code...",
+        "hitl_2": "⏸️ Code review pending",
+        "pitching": "🎤 Preparing pitch...",
+        "complete": "✅ Complete!",
+        "error": "❌ Error occurred",
+    }
+    return status_map.get(layer, layer)
 
 
 def handle_auto_start(state):
-    """Auto-start the workflow."""
+    """Start the workflow and enter polling mode."""
     st.session_state.workflow_started = True
-    with st.spinner("AI team is brainstorming..."):
-        result = api_request("POST", f"/sessions/{st.session_state.session_id}/start")
-
+    
+    result = api_request("POST", f"/sessions/{st.session_state.session_id}/start")
+    
     if result:
+        st.info("🚀 Workflow started! Watch the AI team work below...")
         st.rerun()
+    else:
+        st.error("Failed to start workflow")
+        st.session_state.workflow_started = False
 
 
 def handle_idea_selection(state):
@@ -165,8 +349,6 @@ def handle_idea_selection(state):
                             st.rerun()
     else:
         st.info("Waiting for ideas to be generated...")
-        time.sleep(2)
-        st.rerun()
 
 
 def handle_code_review(state):
@@ -199,7 +381,6 @@ def handle_completion(state):
     """Handle workflow completion."""
     st.success("🎉 Hackathon project complete!")
 
-    # Export options
     st.subheader("📦 Export")
 
     col1, col2 = st.columns(2)
@@ -215,7 +396,6 @@ def handle_completion(state):
             if result:
                 st.success(f"Pitch materials exported to: `{result['filepath']}`")
 
-    # Summary
     st.subheader("📊 Project Summary")
     if state.get("selected_idea"):
         st.write(f"**Project:** {state['selected_idea'].get('title', '')}")
