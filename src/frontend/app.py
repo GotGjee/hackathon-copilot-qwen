@@ -340,6 +340,16 @@ def handle_code_review(state):
                     "approved": True,
                 })
             if result:
+                # Add confirmation to stream_messages in correct order
+                st.session_state.stream_messages.append({
+                    "event_type": "message",
+                    "agent": "system",
+                    "agent_name": "System",
+                    "emoji": "✅",
+                    "role": "HITL",
+                    "message": "Human approved the code!",
+                })
+                st.session_state.event_index += 1
                 st.rerun()
     with col2:
         feedback = st.text_area("Change Requests (optional)")
@@ -350,6 +360,16 @@ def handle_code_review(state):
                     "feedback": feedback,
                 })
             if result:
+                # Add confirmation to stream_messages in correct order
+                st.session_state.stream_messages.append({
+                    "event_type": "message",
+                    "agent": "system",
+                    "agent_name": "System",
+                    "emoji": "❌",
+                    "role": "HITL",
+                    "message": f"Human requested changes: {feedback}" if feedback else "Human requested changes!",
+                })
+                st.session_state.event_index += 1
                 st.rerun()
 
 

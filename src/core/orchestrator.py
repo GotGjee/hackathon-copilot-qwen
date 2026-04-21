@@ -385,20 +385,15 @@ class Orchestrator:
             raise ValueError("Session is not waiting for code review")
 
         if approved:
-            state.add_agent_message(
-                agent="system",
-                agent_name="System",
-                emoji="✅",
-                role="HITL",
-                message="Human approved the code!",
-            )
+            # Confirmation message handled in frontend for proper ordering in chat
+            pass
         else:
             state.add_agent_message(
                 agent="system",
                 agent_name="System",
                 emoji="❌",
                 role="HITL",
-                message=f"Human requested changes: {feedback or 'No feedback provided'}",
+                message=f"Human requested changes: {feedback}",
             )
             # Could loop back to building with feedback
 
