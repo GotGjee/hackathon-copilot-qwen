@@ -43,7 +43,7 @@ class Idea(BaseModel):
     description: str
     key_features: List[str] = Field(default_factory=list)
     tech_stack: List[str] = Field(default_factory=list)
-    innovation_score: int = Field(ge=1, le=10)
+    innovation_score: float = Field(ge=1, le=10)
     target_users: str
 
 

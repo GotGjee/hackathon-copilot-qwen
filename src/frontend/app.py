@@ -1,6 +1,6 @@
 """
 Hackathon Copilot - Streamlit Frontend
-Full-screen LINE-style chat UI with Alibaba orange-white theme.
+Business-grade LINE-style chat UI with Alibaba orange-white theme.
 """
 
 import streamlit as st
@@ -9,46 +9,125 @@ import time
 import os
 from datetime import datetime
 
-# Configuration
 API_BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:8000")
 
-# Agent config
 AGENTS = {
-    "Max": {"icon": "🧠", "color": "#FF6B00", "bg": "#FFF3E0", "align": "right"},
-    "Sarah": {"icon": "⚖️", "color": "#E65100", "bg": "#FFF8E1", "align": "left"},
-    "Dave": {"icon": "📋", "color": "#F57C00", "bg": "#FFF3E0", "align": "left"},
-    "Luna": {"icon": "🏗️", "color": "#FF8F00", "bg": "#FFF8E1", "align": "left"},
-    "Kai": {"icon": "🔨", "color": "#FFB300", "bg": "#FFF3E0", "align": "right"},
-    "Rex": {"icon": "🔍", "color": "#E65100", "bg": "#FFF8E1", "align": "left"},
-    "Nova": {"icon": "🎤", "color": "#FF6B00", "bg": "#FFF3E0", "align": "right"},
-    "Nova (Slides)": {"icon": "📊", "color": "#F57C00", "bg": "#FFF3E0", "align": "right"},
-    "Nova (Script)": {"icon": "🎙️", "color": "#FF8F00", "bg": "#FFF3E0", "align": "right"},
-    "System": {"icon": "🚀", "color": "#FF6B00", "bg": "#FFF3E0", "align": "center"},
-    "Human": {"icon": "👤", "color": "#2196F3", "bg": "#E3F2FD", "align": "right"},
+    "Max": {"icon": "🧠", "color": "#FF6B00", "bg": "#FFF3E0", "border": "#FF6B00"},
+    "Sarah": {"icon": "⚖️", "color": "#E65100", "bg": "#FFF8E1", "border": "#E65100"},
+    "Dave": {"icon": "📋", "color": "#F57C00", "bg": "#FFFDE7", "border": "#F57C00"},
+    "Luna": {"icon": "🏗️", "color": "#FF8F00", "bg": "#FFF3E0", "border": "#FF8F00"},
+    "Kai": {"icon": "🔨", "color": "#EF6C00", "bg": "#FBE9E7", "border": "#EF6C00"},
+    "Rex": {"icon": "🔍", "color": "#BF360C", "bg": "#FFCCBC", "border": "#BF360C"},
+    "Nova": {"icon": "🎤", "color": "#FF6B00", "bg": "#FFF3E0", "border": "#FF6B00"},
+    "Nova (Slides)": {"icon": "📊", "color": "#E65100", "bg": "#FFF8E1", "border": "#E65100"},
+    "Nova (Script)": {"icon": "🎙️", "color": "#FF8F00", "bg": "#FFF3E0", "border": "#FF8F00"},
+    "System": {"icon": "🚀", "color": "#999", "bg": "#F5F5F5", "border": "#DDD"},
+    "Human": {"icon": "👤", "color": "#2196F3", "bg": "#E3F2FD", "border": "#2196F3"},
 }
 
-DIALOGUE_PAIRS = {
-    "Max": "Sarah",
-    "Sarah": "Max",
-    "Kai": "Rex",
-    "Rex": "Kai",
-    "Nova (Slides)": "Nova",
-    "Nova (Script)": "Nova (Slides)",
+# Global CSS - inject once
+GLOBAL_CSS = """
+<style>
+/* Hide all Streamlit defaults */
+[data-testid="stHeader"] { display: none !important; }
+[data-testid="stSidebar"] { display: none !important; }
+footer { display: none !important; }
+
+/* Hide chat elements by default (only show when body has .chat-mode) */
+.chat-page, .chat-header, .chat-messages, .chat-bottom-bar, .progress-bar { display: none !important; }
+/* Hide create elements by default (only show when body has .create-mode) */
+.create-page, .create-card { display: none !important; }
+
+/* Chat mode styles */
+body.chat-mode .chat-page {
+    display: flex !important; flex-direction: column !important; height: 100vh !important;
+    background: #F5F0EB !important; margin: 0 !important; padding: 0 !important;
+}
+body.chat-mode .chat-header {
+    background: linear-gradient(135deg, #FF6B00 0%, #FF8F00 100%) !important;
+    color: white !important; padding: 12px 24px !important; display: flex !important;
+    align-items: center !important; justify-content: space-between !important;
+    flex-shrink: 0 !important; box-shadow: 0 2px 12px rgba(255,107,0,0.3) !important;
+}
+body.chat-mode .chat-header-title { font-size: 1.1rem !important; font-weight: 700 !important; }
+body.chat-mode .chat-header-sub { font-size: 0.75rem !important; opacity: 0.85 !important; }
+body.chat-mode .progress-bar { background: #FFF3E0 !important; padding: 0 24px !important; flex-shrink: 0 !important; }
+body.chat-mode .progress-track { background: #E0E0E0 !important; border-radius: 4px !important; height: 4px !important; overflow: hidden !important; }
+body.chat-mode .progress-fill { background: linear-gradient(90deg, #FF6B00, #FFB300) !important; height: 100% !important; transition: width 0.5s !important; }
+body.chat-mode .chat-messages { flex: 1 !important; overflow-y: auto !important; padding: 16px 20px !important; }
+body.chat-mode .chat-bottom-bar {
+    background: white !important; border-top: 1px solid #E8E0D8 !important;
+    padding: 10px 20px !important; display: flex !important; gap: 10px !important;
+    flex-shrink: 0 !important; flex-wrap: wrap !important;
 }
 
+/* Create mode styles */
+body.create-mode .create-page {
+    display: flex !important; flex-direction: column !important; align-items: center !important;
+    justify-content: center !important; min-height: 100vh !important;
+    background: linear-gradient(180deg, #FFF8F0 0%, #FFFFFF 40%) !important;
+    padding: 2rem !important;
+}
+body.create-mode .create-card {
+    display: block !important; background: white !important; border-radius: 24px !important;
+    box-shadow: 0 8px 40px rgba(255,107,0,0.08), 0 2px 12px rgba(0,0,0,0.04) !important;
+    padding: 3rem !important; max-width: 560px !important; width: 100% !important; text-align: center !important;
+}
 
-def api_request(method: str, endpoint: str, data: dict | None = None):
+/* Message bubbles */
+.msg { display: flex; gap: 10px; margin-bottom: 14px; align-items: flex-start; }
+.msg-avatar {
+    width: 36px; height: 36px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; flex-shrink: 0; box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+}
+.msg-body { flex: 1; min-width: 0; }
+.msg-name { font-size: 0.7rem; font-weight: 700; margin-bottom: 2px; }
+.msg-bubble {
+    padding: 10px 14px; border-radius: 12px; border-top-left-radius: 4px;
+    font-size: 0.88rem; line-height: 1.55; box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+.msg-time { font-size: 0.6rem; color: #AAA; margin-top: 3px; }
+.sys-badge {
+    text-align: center; padding: 6px 14px; margin: 10px auto;
+    font-size: 0.75rem; color: #888; background: rgba(255,255,255,0.8);
+    border-radius: 16px; max-width: 70%; border: 1px solid #E8E0D8;
+}
+.sys-badge.error { background: #FFEBEE; color: #D32F2F; border-color: #FFCDD2; }
+
+/* Buttons */
+.stButton > button {
+    background: linear-gradient(135deg, #FF6B00, #FF8F00) !important;
+    color: white !important; border: none !important; border-radius: 12px !important;
+    padding: 10px 20px !important; font-weight: 700 !important; font-size: 0.95rem !important;
+    box-shadow: 0 2px 8px rgba(255,107,0,0.25) !important;
+}
+.stButton > button:hover { box-shadow: 0 4px 16px rgba(255,107,0,0.35) !important; }
+.stTextInput > div > div > input, .stTextArea > div > div > textarea {
+    border: 2px solid #FFD180 !important; border-radius: 12px !important;
+}
+.stTextInput > div > div > input:focus, .stTextArea > div > div > textarea:focus {
+    border-color: #FF6B00 !important; box-shadow: 0 0 0 3px rgba(255,107,0,0.1) !important;
+}
+
+/* Hide Streamlit content area margins */
+.main .block-container { max-width: 100% !important; padding: 0 !important; }
+</style>
+"""
+
+
+def api_request(method, endpoint, data=None):
     try:
         url = f"{API_BASE_URL}{endpoint}"
         if method == "GET":
-            response = requests.get(url, timeout=10)
+            r = requests.get(url, timeout=10)
         elif method == "POST":
-            response = requests.post(url, json=data or {}, timeout=10)
+            r = requests.post(url, json=data or {}, timeout=10)
         else:
             return None
-        response.raise_for_status()
-        return response.json()
-    except requests.exceptions.RequestException:
+        r.raise_for_status()
+        return r.json()
+    except Exception:
         return None
 
 
@@ -56,547 +135,144 @@ def format_time():
     return datetime.now().strftime("%H:%M")
 
 
-def render_full_chat(messages, show_idea_modal=False, ideas=None, show_review_modal=False):
-    """Render full-screen LINE-style chat."""
-    prev_agent = None
-    html_parts = []
-    
+def render_bubbles(messages):
+    parts = []
     for msg in messages:
-        event_type = msg.get("event_type", "message")
-        agent_name = msg.get("agent_name", "System")
-        message = msg.get("message", "")
-        
-        agent_info = AGENTS.get(agent_name, {"icon": "🤖", "color": "#95A5A6", "bg": "#F5F5F5", "align": "left"})
-        icon = agent_info["icon"]
-        color = agent_info["color"]
-        bg_color = agent_info["bg"]
-        align = agent_info["align"]
-        
-        expected_reply = DIALOGUE_PAIRS.get(agent_name)
-        is_dialogue = expected_reply is not None and prev_agent == expected_reply
-        prev_agent = agent_name
-        
-        # Skip thinking events
-        if event_type == "thinking":
+        et = msg.get("event_type", "message")
+        an = msg.get("agent_name", "System")
+        m = msg.get("message", "")
+        if et == "thinking":
             continue
-        
-        # System messages (phase start/complete)
-        if event_type in ("phase_start", "phase_complete"):
-            html_parts.append(f'<div class="system-msg">{message}</div>')
-            continue
-        
-        if event_type == "error":
-            html_parts.append(f'<div class="system-msg error">{message}</div>')
-            continue
-        
-        # Regular messages
-        if event_type == "message":
-            dialogue_indicator = '<span class="dialogue-badge">↩️</span>' if is_dialogue else ''
-            reply_line = f'<div class="reply-to">↩️ ตอบกลับ {expected_reply}</div>' if is_dialogue else ''
-            
-            if align == "right":
-                html_parts.append(
-                    f'<div class="msg-row right">'
-                    f'<div class="msg-bubble right" style="background: {color}; color: white;">'
-                    f'<div class="msg-header right">{icon} {agent_name}</div>'
-                    f'<div class="msg-text">{message}</div>'
-                    f'<div class="msg-time right">{dialogue_indicator}{format_time()}</div>'
-                    f'</div></div>'
-                )
-            elif align == "center":
-                html_parts.append(f'<div class="msg-row center"><div class="msg-bubble center">{message}</div></div>')
-            else:
-                html_parts.append(
-                    f'<div class="msg-row left">'
-                    f'<div class="avatar">{icon}</div>'
-                    f'<div>'
-                    f'{reply_line}'
-                    f'<div class="msg-bubble left" style="background: {bg_color}; border: 1px solid {color}33;">'
-                    f'<div class="msg-header left" style="color: {color};">{agent_name}</div>'
-                    f'<div class="msg-text">{message}</div>'
-                    f'<div class="msg-time left">{dialogue_indicator}{format_time()}</div>'
-                    f'</div></div></div>'
-                )
-    
-    # Build idea selection modal if needed
-    idea_modal = ""
-    if show_idea_modal and ideas:
-        idea_cards = ""
-        for idea in ideas:
-            features = "".join([f"<li>{f}</li>" for f in idea.get("key_features", [])])
-            idea_cards += f"""
-            <div class="idea-card" onclick="selectIdea({idea.get('id')})">
-                <div class="idea-title">{idea.get('title', '')}</div>
-                <div class="idea-desc">{idea.get('description', '')}</div>
-                <div class="idea-features"><ul>{features}</ul></div>
-                <div class="idea-tech">Tech: {', '.join(idea.get('tech_stack', []))}</div>
-                <div class="idea-btn">คลิกเพื่อเลือก</div>
-            </div>"""
-        
-        idea_modal = f"""
-        <div class="modal-overlay" id="ideaModal">
-            <div class="modal-content">
-                <div class="modal-title">🎯 เลือกไอเดียที่ต้องการ</div>
-                <div class="modal-subtitle">คลิกที่การ์ดเพื่อเลือกไอเดีย แล้ว AI จะเริ่มพัฒนาต่อ</div>
-                <div class="idea-list">{idea_cards}</div>
-            </div>
-        </div>"""
-    
-    # Build review modal if needed
-    review_modal = ""
-    if show_review_modal:
-        review_modal = """
-        <div class="modal-overlay" id="reviewModal">
-            <div class="modal-content">
-                <div class="modal-title">🔍 ตรวจสอบโค้ด</div>
-                <div class="modal-subtitle">โค้ดถูกสร้างเรียบร้อยแล้ว คุณต้องการอนุมัติหรือแก้ไข?</div>
-                <div class="modal-actions">
-                    <button class="btn-approve" onclick="approveCode()">✅ อนุมัติ</button>
-                    <button class="btn-reject" onclick="rejectCode()">❌ แก้ไข</button>
-                </div>
-            </div>
-        </div>"""
-    
-    full_html = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-    <meta charset="UTF-8">
-    <style>
-        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-        body {{ 
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: white;
-        }}
-        
-        .chat-container {{
-            width: 100%;
-            max-width: 100%;
-            padding: 12px 16px;
-            overflow-y: auto;
-        }}
-        
-        .system-msg {{
-            text-align: center;
-            padding: 6px 14px;
-            margin: 10px auto;
-            font-size: 0.8em;
-            color: #888;
-            background: #FFF3E0;
-            border-radius: 14px;
-            max-width: 70%;
-        }}
-        .system-msg.error {{ background: #FFEBEE; color: #D32F2F; }}
-        
-        .msg-row {{
-            display: flex;
-            align-items: flex-end;
-            margin-bottom: 10px;
-            gap: 8px;
-        }}
-        .msg-row.left {{ justify-content: flex-start; }}
-        .msg-row.right {{ justify-content: flex-end; }}
-        .msg-row.center {{ justify-content: center; }}
-        
-        .avatar {{
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, #FF6B00, #FF8F00);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 18px;
-            flex-shrink: 0;
-        }}
-        
-        .msg-bubble {{
-            max-width: 70%;
-            padding: 10px 14px;
-            border-radius: 16px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }}
-        .msg-bubble.left {{ border-bottom-left-radius: 4px; }}
-        .msg-bubble.right {{ border-bottom-right-radius: 4px; }}
-        .msg-bubble.center {{ background: #FFF3E0; font-size: 0.85em; max-width: 80%; }}
-        
-        .msg-header {{ font-size: 0.7em; font-weight: 600; margin-bottom: 3px; }}
-        .msg-header.left {{ color: #FF6B00; }}
-        .msg-header.right {{ color: white; text-align: right; }}
-        
-        .msg-text {{ font-size: 0.9em; line-height: 1.5; word-wrap: break-word; }}
-        
-        .msg-time {{ font-size: 0.6em; margin-top: 3px; opacity: 0.7; }}
-        .msg-time.left {{ text-align: left; color: #888; }}
-        .msg-time.right {{ text-align: right; color: rgba(255,255,255,0.8); }}
-        
-        .reply-to {{ font-size: 0.7em; color: #888; padding: 2px 10px; margin-bottom: -6px; margin-left: 6px; }}
-        .dialogue-badge {{ background: #FF6B00; color: white; border-radius: 50%; padding: 1px 5px; font-size: 0.7em; margin-left: 3px; }}
-        
-        /* Modal styles */
-        .modal-overlay {{
-            position: fixed;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0,0,0,0.5);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 1000;
-        }}
-        .modal-content {{
-            background: white;
-            border-radius: 20px;
-            padding: 24px;
-            max-width: 90%;
-            max-height: 80vh;
-            overflow-y: auto;
-            width: 800px;
-        }}
-        .modal-title {{ font-size: 1.4em; font-weight: bold; color: #FF6B00; margin-bottom: 8px; }}
-        .modal-subtitle {{ color: #666; margin-bottom: 20px; }}
-        
-        .idea-list {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; }}
-        .idea-card {{
-            background: #FFF8E1;
-            border: 2px solid #FF6B00;
-            border-radius: 16px;
-            padding: 16px;
-            cursor: pointer;
-            transition: all 0.2s;
-        }}
-        .idea-card:hover {{ background: #FFF3E0; transform: scale(1.02); }}
-        .idea-title {{ font-size: 1.1em; font-weight: bold; color: #FF6B00; margin-bottom: 8px; }}
-        .idea-desc {{ color: #555; font-size: 0.9em; margin-bottom: 10px; }}
-        .idea-features {{ color: #666; font-size: 0.85em; margin-bottom: 10px; }}
-        .idea-features ul {{ padding-left: 20px; }}
-        .idea-tech {{ color: #888; font-size: 0.8em; margin-bottom: 12px; }}
-        .idea-btn {{ background: #FF6B00; color: white; text-align: center; padding: 8px; border-radius: 8px; font-weight: bold; }}
-        
-        .modal-actions {{ display: flex; gap: 12px; }}
-        .btn-approve, .btn-reject {{
-            flex: 1;
-            padding: 14px;
-            border: none;
-            border-radius: 12px;
-            font-size: 1em;
-            font-weight: bold;
-            cursor: pointer;
-        }}
-        .btn-approve {{ background: #4CAF50; color: white; }}
-        .btn-reject {{ background: #FF6B00; color: white; }}
-    </style>
-    </head>
-    <body>
-    <div class="chat-container">
-    {''.join(html_parts)}
-    </div>
-    {idea_modal}
-    {review_modal}
-    <script>
-        function selectIdea(id) {{
-            const msg = JSON.stringify({{type: "select_idea", idea_id: id}});
-            window.parent.postMessage(msg, "*");
-        }}
-        function approveCode() {{
-            window.parent.postMessage(JSON.stringify({{type: "approve_code", approved: true}}), "*");
-        }}
-        function rejectCode() {{
-            window.parent.postMessage(JSON.stringify({{type: "approve_code", approved: false}}), "*");
-        }}
-    </script>
-    </body>
-    </html>
-    """
-    return full_html
+        ag = AGENTS.get(an, {"icon": "🤖", "color": "#95A5A6", "bg": "#F5F5F5", "border": "#CCC"})
+        ic, co, bg, br = ag["icon"], ag["color"], ag["bg"], ag["border"]
+        if et in ("phase_start", "phase_complete"):
+            parts.append(f'<div class="sys-badge">{m}</div>')
+        elif et == "error":
+            parts.append(f'<div class="sys-badge error">{m}</div>')
+        elif et == "message":
+            parts.append(
+                f'<div class="msg">'
+                f'<div class="msg-avatar" style="background:linear-gradient(135deg,{co},{br})">{ic}</div>'
+                f'<div class="msg-body">'
+                f'<div class="msg-name" style="color:{co}">{an}</div>'
+                f'<div class="msg-bubble" style="background:{bg};border-left:3px solid {co}">{m}</div>'
+                f'<div class="msg-time">{format_time()}</div>'
+                f'</div></div>'
+            )
+    return "\n".join(parts)
 
 
 def main():
-    st.set_page_config(
-        page_title="Hackathon Copilot",
-        page_icon="🚀",
-        layout="wide",
-        initial_sidebar_state="collapsed"
-    )
+    st.set_page_config(page_title="Hackathon Copilot", page_icon="🚀", layout="wide", initial_sidebar_state="collapsed")
 
-    # Full-screen CSS
-    st.markdown("""
-        <style>
-            /* Full screen layout */
-            .stApp { max-width: 100%; }
-            .main .block-container { padding: 0 !important; max-width: 100% !important; }
-            header, #MainMenu, footer { visibility: hidden !important; display: none !important; }
-            [data-testid="stSidebar"] { display: none; }
-            
-            /* Header */
-            .app-header {
-                background: linear-gradient(135deg, #FF6B00, #FF8F00);
-                color: white;
-                padding: 12px 20px;
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-            }
-            .app-header h1 { font-size: 1.3em; margin: 0; }
-            .app-header .subtitle { font-size: 0.8em; opacity: 0.9; }
-            
-            /* Progress bar */
-            .progress-container { background: #FFF3E0; padding: 8px 20px; }
-            .stProgress > div > div { background: linear-gradient(90deg, #FF6B00, #FFB300); }
-            
-            /* Controls bar */
-            .controls-bar {
-                background: white;
-                border-top: 2px solid #FFF3E0;
-                padding: 8px 20px;
-                display: flex;
-                align-items: center;
-                gap: 10px;
-            }
-            
-            /* Buttons */
-            .stButton > button {
-                background: linear-gradient(135deg, #FF6B00, #FF8F00) !important;
-                border: none !important;
-                color: white !important;
-                border-radius: 8px !important;
-            }
-            
-            /* Hide all streamlit elements except HTML */
-            element {{ visibility: hidden; }}
-        </style>
-    """, unsafe_allow_html=True)
-
-    # Initialize session state
+    # Initialize state
     if "session_id" not in st.session_state:
         st.session_state.session_id = None
-    if "workflow_started" not in st.session_state:
-        st.session_state.workflow_started = False
     if "stream_messages" not in st.session_state:
         st.session_state.stream_messages = []
     if "event_index" not in st.session_state:
         st.session_state.event_index = 0
-    if "prev_layer" not in st.session_state:
-        st.session_state.prev_layer = ""
-    if "theme" not in st.session_state:
-        st.session_state.theme = ""
+    if "workflow_started" not in st.session_state:
+        st.session_state.workflow_started = False
+    if "_mode" not in st.session_state:
+        st.session_state._mode = "create"  # "create" or "chat"
 
-    # Handle messages from iframe
-    from streamlit import runtime
-    # We'll use session state for interaction
+    in_chat = st.session_state.session_id is not None
 
-    if not st.session_state.session_id:
-        show_create_session_fullscreen()
+    # Inject global CSS
+    st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
+
+    # Set body class via JS
+    mode_class = "chat-mode" if in_chat else "create-mode"
+    st.components.v1.html(
+        f"""<script>
+        document.body.className = '{mode_class}';
+        </script>""",
+        height=0
+    )
+
+    if in_chat:
+        render_chat()
     else:
-        show_fullscreen_chat()
+        render_create()
 
 
-def show_create_session_fullscreen():
-    """Show full-screen creation form."""
-    html = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: white;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            min-height: 100vh;
-        }
-        .container {
-            max-width: 600px;
-            width: 90%;
-            text-align: center;
-        }
-        .logo { font-size: 4em; margin-bottom: 20px; }
-        h1 { color: #FF6B00; font-size: 2.5em; margin-bottom: 10px; }
-        .subtitle { color: #888; font-size: 1.1em; margin-bottom: 40px; }
-        .form-group { text-align: left; margin-bottom: 20px; }
-        label { color: #FF6B00; font-weight: bold; margin-bottom: 8px; display: block; }
-        input, textarea {
-            width: 100%;
-            padding: 14px;
-            border: 2px solid #FFD180;
-            border-radius: 12px;
-            font-size: 1em;
-        }
-        input:focus, textarea:focus { border-color: #FF6B00; outline: none; }
-        textarea { min-height: 80px; resize: vertical; }
-        .btn-start {
-            width: 100%;
-            padding: 16px;
-            background: linear-gradient(135deg, #FF6B00, #FF8F00);
-            color: white;
-            border: none;
-            border-radius: 12px;
-            font-size: 1.2em;
-            font-weight: bold;
-            cursor: pointer;
-            margin-top: 20px;
-        }
-        .btn-start:disabled { opacity: 0.5; cursor: not-allowed; }
-        .status { margin-top: 20px; padding: 12px; border-radius: 8px; display: none; }
-        .status.error { background: #FFEBEE; color: #D32F2F; display: block; }
-        .status.success { background: #E8F5E9; color: #2E7D32; display: block; }
-    </style>
-    </head>
-    <body>
-    <div class="container">
-        <div class="logo">🚀</div>
-        <h1>Hackathon Copilot</h1>
-        <p class="subtitle">AI-Powered Multi-Agent Team for Hackathon Success</p>
-        <form id="createForm" onsubmit="return createSession(event)">
-            <div class="form-group">
-                <label>🎯 Hackathon Theme</label>
-                <input type="text" id="theme" placeholder="e.g., AI for Education, Sustainable Living" required>
-            </div>
-            <div class="form-group">
-                <label>📏 Constraints (optional)</label>
-                <textarea id="constraints" placeholder="e.g., 48 hours, solo developer, no external APIs">48-hour hackathon, solo developer</textarea>
-            </div>
-            <button type="submit" class="btn-start" id="startBtn">🚀 Start Session</button>
-        </form>
-        <div id="status" class="status"></div>
+def render_create():
+    # Create page container (hidden when body doesn't have .create-mode)
+    st.markdown('<div class="create-page">', unsafe_allow_html=True)
+
+    st.markdown("""
+    <div class="create-card">
+        <div class="create-logo">🚀</div>
+        <div class="create-title">Hackathon Copilot</div>
+        <div class="create-sub">AI-Powered Multi-Agent Team for Hackathon Success</div>
     </div>
-    <script>
-        function createSession(e) {
-            e.preventDefault();
-            const theme = document.getElementById('theme').value;
-            const constraints = document.getElementById('constraints').value;
-            const btn = document.getElementById('startBtn');
-            const status = document.getElementById('status');
-            
-            btn.disabled = true;
-            btn.textContent = 'Creating session...';
-            
-            fetch('/api/sessions', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({theme, constraints})
-            })
-            .then(r => r.json())
-            .then(data => {
-                status.className = 'status success';
-                status.textContent = 'Session created! Redirecting...';
-                window.parent.postMessage(JSON.stringify({type: 'session_created', session_id: data.session_id}), '*');
-            })
-            .catch(err => {
-                status.className = 'status error';
-                status.textContent = 'Error: ' + err.message;
-                btn.disabled = false;
-                btn.textContent = '🚀 Start Session';
-            });
-            return false;
-        }
-    </script>
-    </body>
-    </html>
-    """
-    st.components.v1.html(html, height=800, scrolling=False)
+    """, unsafe_allow_html=True)
+
+    theme = st.text_input(
+        "🎯 Hackathon Theme",
+        placeholder="e.g., AI for Education",
+        key="create_theme"
+    )
+    constraints = st.text_area(
+        "📏 Constraints (optional)",
+        value="48-hour hackathon, solo developer",
+        key="create_constraints"
+    )
+
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        if st.button("🚀 Start Session", type="primary", disabled=not theme, use_container_width=True):
+            with st.spinner("Creating session..."):
+                result = api_request("POST", "/sessions", {"theme": theme, "constraints": constraints})
+            if result:
+                st.session_state.session_id = result["session_id"]
+                st.session_state.stream_messages = []
+                st.session_state.event_index = 0
+                st.session_state.workflow_started = False
+                st.rerun()
+            else:
+                st.error("Failed to create session. Make sure API server is running.")
+
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
-def show_fullscreen_chat():
-    """Show full-screen chat interface."""
+def render_chat():
     session_id = st.session_state.session_id
 
-    # Poll for new events
-    event_data = poll_events(session_id, st.session_state.event_index)
-    new_events = event_data.get("events", [])
-    
-    if new_events:
-        for event in new_events:
-            st.session_state.stream_messages.append(event)
-            st.session_state.event_index = event.get("index", 0) + 1
+    # Poll events
+    try:
+        r = requests.get(
+            f"{API_BASE_URL}/sessions/{session_id}/events",
+            params={"since_index": st.session_state.event_index},
+            timeout=3
+        )
+        if r.status_code == 200:
+            ed = r.json()
+            for ev in ed.get("events", []):
+                st.session_state.stream_messages.append(ev)
+                st.session_state.event_index = ev.get("index", 0) + 1
+    except Exception:
+        pass
 
-    # Get session state
     state = api_request("GET", f"/sessions/{session_id}")
     if not state:
         st.error("Failed to load session")
         return
 
-    # Track layer changes
     current_layer = state.get("current_layer", "")
-    
-    # Progress
-    progress_value = get_progress_value(current_layer)
-    status_text = get_status_text(current_layer)
-
-    # Determine modals to show
-    show_idea_modal = (current_layer == "hitl_1" and not state.get("selected_idea"))
-    ideas = state.get("ideas", []) if show_idea_modal else None
-    show_review_modal = (current_layer == "hitl_2")
-
-    # Header + progress bar
-    st.markdown(f"""
-        <div style="background: linear-gradient(135deg, #FF6B00, #FF8F00); color: white; padding: 10px 16px; display: flex; justify-content: space-between; align-items: center;">
-            <div>
-                <div style="font-size: 1.1em; font-weight: bold;">🚀 Hackathon Copilot</div>
-                <div style="font-size: 0.75em; opacity: 0.9;">{status_text}</div>
-            </div>
-            <div style="display: flex; gap: 8px;">
-                <button onclick="window.parent.location.reload()" style="background: rgba(255,255,255,0.2); border: none; color: white; padding: 6px 12px; border-radius: 6px; cursor: pointer;">🔄</button>
-                <button onclick="window.parent.postMessage(JSON.stringify({{type:'new_session'}}), '*')" style="background: rgba(255,255,255,0.2); border: none; color: white; padding: 6px 12px; border-radius: 6px; cursor: pointer;">➕</button>
-            </div>
-        </div>
-        <div style="background: #FFF3E0; padding: 4px 16px;">
-            <div style="background: #E0E0E0; border-radius: 4px; overflow: hidden;">
-                <div style="background: linear-gradient(90deg, #FF6B00, #FFB300); width: {progress_value}%; height: 6px; transition: width 0.5s;"></div>
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
-
-    # Chat area
-    chat_html = render_full_chat(
-        st.session_state.stream_messages,
-        show_idea_modal=show_idea_modal,
-        ideas=ideas,
-        show_review_modal=show_review_modal
-    )
-    st.components.v1.html(chat_html, height=550, scrolling=True)
-
-    # Bottom controls
-    col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
-    with col1:
-        if st.button("🆕 New Session"):
-            st.session_state.session_id = None
-            st.session_state.stream_messages = []
-            st.rerun()
-    with col2:
-        if st.button("🔄 Refresh"):
-            st.rerun()
-    with col3:
-        if st.button("📥 Export"):
-            pass
-
-    # Handle auto-start
-    if not state.get("is_paused") and not st.session_state.workflow_started:
-        st.session_state.workflow_started = True
-        api_request("POST", f"/sessions/{session_id}/start")
-
-    # Auto-refresh when working
-    if not state.get("is_paused") and st.session_state.workflow_started:
-        time.sleep(0.5)
-        st.rerun()
-
-
-def poll_events(session_id: str, since_index: int = 0):
+    progress = 0
+    layers_order = [
+        "idle", "ideation", "judging", "hitl_1", "planning",
+        "architecting", "building", "critiquing", "hitl_2", "pitching", "complete"
+    ]
     try:
-        url = f"{API_BASE_URL}/sessions/{session_id}/events"
-        params = {"since_index": since_index}
-        response = requests.get(url, params=params, timeout=3)
-        if response.status_code == 200:
-            return response.json()
-    except Exception:
+        progress = (layers_order.index(current_layer) + 1) / len(layers_order) * 100
+    except ValueError:
         pass
-    return {"events": [], "total": since_index}
 
-
-def get_status_text(layer: str) -> str:
-    return {
-        "idle": "🟡 Ready to start",
+    status_map = {
+        "idle": "🟡 Ready",
         "ideation": "🧠 Max is brainstorming...",
         "judging": "⚖️ Sarah is evaluating...",
         "hitl_1": "⏸️ เลือกไอเดียที่ต้องการ",
@@ -608,16 +284,102 @@ def get_status_text(layer: str) -> str:
         "pitching": "🎤 Nova is preparing pitch...",
         "complete": "✅ เสร็จสมบูรณ์!",
         "error": "❌ เกิดข้อผิดพลาด",
-    }.get(layer, layer)
+    }
+    status = status_map.get(current_layer, current_layer)
 
+    # Chat page container
+    st.markdown(f"""
+    <div class="chat-page">
+        <div class="chat-header">
+            <div>
+                <div class="chat-header-title">🚀 {state.get('theme', 'Hackathon Copilot')}</div>
+                <div class="chat-header-sub">{status}</div>
+            </div>
+            <div style="font-size:0.7rem;opacity:0.8">{session_id[:8]}</div>
+        </div>
+        <div class="progress-bar">
+            <div class="progress-track">
+                <div class="progress-fill" style="width:{progress}%"></div>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
-def get_progress_value(layer: str) -> float:
-    layers = ["idle", "ideation", "judging", "hitl_1", "planning", "architecting", "building", "critiquing", "hitl_2", "pitching", "complete"]
-    try:
-        idx = layers.index(layer)
-        return (idx + 1) / len(layers) * 100
-    except ValueError:
-        return 0.0
+    # Idea selection modal
+    show_idea = (current_layer == "hitl_1" and not state.get("selected_idea"))
+    ideas = state.get("ideas", []) if show_idea else None
+
+    if show_idea and ideas:
+        st.markdown("### 🎯 เลือกไอเดียที่ต้องการ")
+        st.caption("คลิกที่การ์ดเพื่อเลือกไอเดีย แล้ว AI จะเริ่มพัฒนาต่อ")
+        cols = st.columns(min(len(ideas), 3))
+        for i, idea in enumerate(ideas):
+            with cols[i % 3]:
+                with st.container(border=True):
+                    st.markdown(f"### {idea.get('title','')}")
+                    st.markdown(idea.get("description",""))
+                    if idea.get("key_features"):
+                        for f in idea["key_features"][:3]:
+                            st.markdown(f"• {f}")
+                    st.markdown(f"**Tech:** {', '.join(idea.get('tech_stack',[]))}")
+                    if st.button("📌 เลือกไอเดียนี้นะ", key=f"sel_{idea.get('id')}", use_container_width=True):
+                        result = api_request("POST", f"/sessions/{session_id}/select-idea", {"idea_id": idea.get("id")})
+                        if result:
+                            st.session_state.stream_messages.append({
+                                "event_type": "message",
+                                "agent_name": "System",
+                                "emoji": "✅",
+                                "role": "HITL",
+                                "message": f"เลือก idea #{idea.get('id')}: '{idea.get('title','')}' กำลังเริ่มพัฒนา..."
+                            })
+                            st.rerun()
+
+    # Chat messages via HTML component
+    st.components.v1.html(
+        f'<div class="chat-messages">{render_bubbles(st.session_state.stream_messages)}</div>',
+        height=420,
+        scrolling=True
+    )
+
+    # Code review modal
+    show_review = (current_layer == "hitl_2")
+    if show_review:
+        st.markdown("### 🔍 ตรวจสอบโค้ด")
+        st.caption("โค้ดถูกสร้างเรียบร้อยแล้ว คุณต้องการอนุมัติหรือแก้ไข?")
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("✅ อนุมัติ", type="primary", use_container_width=True):
+                api_request("POST", f"/sessions/{session_id}/review-code", {"approved": True})
+                st.rerun()
+        with c2:
+            fb = st.text_area("Change requests (optional)", key="review_fb")
+            if st.button("❌ แก้ไข", use_container_width=True):
+                api_request("POST", f"/sessions/{session_id}/review-code", {"approved": False, "feedback": fb})
+                st.rerun()
+
+    # Bottom bar
+    st.markdown('<div class="chat-bottom-bar">', unsafe_allow_html=True)
+    bc1, bc2 = st.columns([1, 1])
+    with bc1:
+        if st.button("🆕 New Session", use_container_width=True):
+            st.session_state.session_id = None
+            st.session_state.stream_messages = []
+            st.session_state.workflow_started = False
+            st.rerun()
+    with bc2:
+        if st.button("🔄 Refresh", use_container_width=True):
+            st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    # Auto-start workflow
+    if not state.get("is_paused") and not st.session_state.workflow_started:
+        st.session_state.workflow_started = True
+        api_request("POST", f"/sessions/{session_id}/start")
+
+    # Auto-refresh
+    if not state.get("is_paused") and st.session_state.workflow_started:
+        time.sleep(0.5)
+        st.rerun()
 
 
 if __name__ == "__main__":
