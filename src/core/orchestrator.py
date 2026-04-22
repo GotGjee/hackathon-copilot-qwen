@@ -319,7 +319,7 @@ class Orchestrator:
         return await self.run_planning(state)
 
     async def run_planning(self, state: SessionState) -> SessionState:
-        """Layer 2, Phase 1: Break down into milestones."""
+        """Layer 2, Phase 1: Break down into milestones with dialogue."""
         from src.agents.planner import PlannerAgent
 
         if not state.selected_idea:
@@ -329,6 +329,8 @@ class Orchestrator:
         logger.info(f"Starting planning for session {state.session_id}")
         
         await emit_phase_start(state.session_id, "planning", "📋 Dave is creating milestones...")
+        
+        # Dave thinking
         await emit_agent_thinking(
             state.session_id, "planner", "Dave", "📋", "Project Manager",
             "Breaking down the project into manageable milestones...", "planning"
@@ -345,31 +347,62 @@ class Orchestrator:
 
         state.milestones = result.milestones
 
+        # Dave presents milestones
+        dave_msg = f"📋 **Dave (PM): ออกแบบ Milestones เรียบร้อย!**\n\n"
+        dave_msg += f"ผมแบ่งโปรเจกต์ **{state.selected_idea.title}** ออกเป็น {len(result.milestones)} milestones:\n\n"
+        for i, m in enumerate(result.milestones, 1):
+            dave_msg += f"{i}. **{m.title}** - {m.description} ({m.estimated_hours}h)\n"
+        dave_msg += f"\n⏱️ **เวลารวมโดยประมาณ:** {result.total_hours} ชั่วโมง"
+        
         await emit_agent_message(
             state.session_id, "planner", "Dave", "📋", "Project Manager",
-            f"Created {len(result.milestones)} milestones. Total estimated: {result.total_hours}h",
-            "planning", {"milestones": [m.title for m in result.milestones]}
+            dave_msg, "planning"
         )
-        await emit_phase_complete(state.session_id, "planning")
-
         state.add_agent_message(
             agent="planner",
             agent_name="Dave",
             emoji="📋",
             role="Project Manager",
-            message=f"Created {len(result.milestones)} milestones. Total estimated: {result.total_hours}h",
+            message=dave_msg,
         )
+
+        # Luna responds to Dave's plan
+        await emit_agent_thinking(
+            state.session_id, "architect", "Luna", "🏗️", "Tech Lead",
+            "Reviewing the milestones and preparing architecture...", "planning"
+        )
+        
+        luna_response = f"💬 **Luna ตอบกลับ Dave:**\n\n"
+        luna_response += f"แผนงานดีมากครับ Dave! ผมเห็นว่า milestones ครอบคลุมทุกด้าน\n"
+        luna_response += f"ผมจะออกแบบ architecture ให้รองรับฟีเจอร์ทั้งหมด\n"
+        luna_response += f"จากนั้นจะส่งต่อให้ Kai พัฒนาต่อทันที!"
+        
+        await emit_agent_message(
+            state.session_id, "architect", "Luna", "🏗️", "Tech Lead",
+            luna_response, "planning"
+        )
+        state.add_agent_message(
+            agent="architect",
+            agent_name="Luna",
+            emoji="🏗️",
+            role="Tech Lead",
+            message=luna_response,
+        )
+
+        await emit_phase_complete(state.session_id, "planning")
 
         return await self.run_architecting(state)
 
     async def run_architecting(self, state: SessionState) -> SessionState:
-        """Layer 2, Phase 2: Design technical architecture."""
+        """Layer 2, Phase 2: Design technical architecture with dialogue."""
         from src.agents.architect import ArchitectAgent
 
         state.transition_to(WorkflowLayer.ARCHITECTING)
         logger.info(f"Starting architecture for session {state.session_id}")
         
         await emit_phase_start(state.session_id, "architecting", "🏗️ Luna is designing the architecture...")
+        
+        # Luna thinking
         await emit_agent_thinking(
             state.session_id, "architect", "Luna", "🏗️", "Tech Lead",
             "Designing the system architecture and file structure...", "architecting"
@@ -387,30 +420,67 @@ class Orchestrator:
 
         state.architecture = result.model_dump(mode='json') if hasattr(result, 'model_dump') else result
 
+        # Luna presents architecture
+        luna_msg = f"🏗️ **Luna (Tech Lead): ออกแบบ Architecture เรียบร้อย!**\n\n"
+        luna_msg += f"ผมออกแบบระบบสำหรับ **{state.selected_idea.title if state.selected_idea else 'N/A'}**\n\n"
+        luna_msg += f"📁 **โครงสร้างโปรเจกต์:**\n"
+        for f in result.file_tree[:10]:
+            luna_msg += f"  {f}\n"
+        luna_msg += f"\n🏛️ **รูปแบบ:** {result.design_pattern}"
+        luna_msg += f"\n📊 **Database:** {result.database_schema}"
+        luna_msg += f"\n🔌 **APIs:** {len(result.api_endpoints)} endpoints"
+        luna_msg += f"\n📦 **Dependencies:** {', '.join(result.dependencies[:5])}"
+        luna_msg += f"\n\nพร้อมส่งต่อให้ Kai พัฒนาแล้วครับ!"
+        
         await emit_agent_message(
             state.session_id, "architect", "Luna", "🏗️", "Tech Lead",
-            "Architecture design complete!", "architecting"
+            luna_msg, "architecting"
         )
-        await emit_phase_complete(state.session_id, "architecting")
-
         state.add_agent_message(
             agent="architect",
             agent_name="Luna",
             emoji="🏗️",
             role="Tech Lead",
-            message="Architecture design complete!",
+            message=luna_msg,
         )
+
+        # Kai responds to Luna
+        await emit_agent_thinking(
+            state.session_id, "builder", "Kai", "🔨", "Senior Developer",
+            "Responding to Luna's architecture...", "architecting"
+        )
+        
+        kai_response = f"💬 **Kai ตอบกลับ Luna:**\n\n"
+        kai_response += f"ออกแบบได้เยี่ยมมากครับ Luna! ผมชอบ design pattern ที่เลือกใช้\n"
+        kai_response += f"โครงสร้างชัดเจน เข้าใจง่าย ผมพร้อมเริ่มเขียนโค้ดแล้ว!\n"
+        kai_response += f"ขอเวลาสักครู่นะครับ แล้วจะส่งให้ Rex ตรวจสอบต่อไป!"
+        
+        await emit_agent_message(
+            state.session_id, "builder", "Kai", "🔨", "Senior Developer",
+            kai_response, "architecting"
+        )
+        state.add_agent_message(
+            agent="builder",
+            agent_name="Kai",
+            emoji="🔨",
+            role="Senior Developer",
+            message=kai_response,
+        )
+
+        await emit_phase_complete(state.session_id, "architecting")
 
         return await self.run_building(state)
 
     async def run_building(self, state: SessionState) -> SessionState:
-        """Layer 2, Phase 3: Generate code."""
+        """Layer 2, Phase 3: Generate code with dialogue."""
         from src.agents.builder import BuilderAgent
 
         state.transition_to(WorkflowLayer.BUILDING)
         logger.info(f"Starting code generation for session {state.session_id}")
         
         await emit_phase_start(state.session_id, "building", "🔨 Kai is writing the code...")
+        
+        # Kai thinking
         await emit_agent_thinking(
             state.session_id, "builder", "Kai", "🔨", "Senior Developer",
             "Generating code files based on the architecture...", "building"
@@ -434,20 +504,30 @@ class Orchestrator:
                 language=file_data.language,
             )
 
+        # Kai presents his work
+        kai_msg = f"🔨 **Kai (Developer): เขียนโค้ดเสร็จแล้ว!**\n\n"
+        kai_msg += f"ผมสร้างโปรเจกต์ **{state.selected_idea.title if state.selected_idea else 'N/A'}** เรียบร้อย\n\n"
+        kai_msg += f"📁 **ไฟล์ที่สร้าง:** {len(result.code_files)} ไฟล์\n\n"
+        kai_msg += f"📄 **ไฟล์สำคัญ:**\n"
+        for f in result.code_files[:8]:
+            kai_msg += f"• `{f.filepath}`\n"
+        kai_msg += f"\n✅ **Tech stack:** {', '.join(state.selected_idea.tech_stack if state.selected_idea else [])}\n"
+        kai_msg += f"\nโค้ดทุกอย่างเขียนตาม architecture ที่ Luna ออกแบบไว้\n"
+        kai_msg += f"พร้อมส่งให้ Rex ทำ code review แล้วครับ!"
+        
         await emit_agent_message(
             state.session_id, "builder", "Kai", "🔨", "Senior Developer",
-            f"Generated {len(result.code_files)} files!", "building",
-            {"files": [f.filepath for f in result.code_files]}
+            kai_msg, "building"
         )
-        await emit_phase_complete(state.session_id, "building")
-
         state.add_agent_message(
             agent="builder",
             agent_name="Kai",
             emoji="🔨",
             role="Senior Developer",
-            message=f"Generated {len(result.code_files)} files!",
+            message=kai_msg,
         )
+
+        await emit_phase_complete(state.session_id, "building")
 
         return await self.run_critiquing(state)
 
