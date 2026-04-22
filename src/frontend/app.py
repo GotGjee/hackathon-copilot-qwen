@@ -1,6 +1,6 @@
 """
 Hackathon Copilot - Streamlit Frontend
-Business-grade LINE-style chat UI with Alibaba orange-white theme.
+LINE-style chat - pure HTML rendering, no Streamlit containers around messages.
 """
 
 import streamlit as st
@@ -12,151 +12,157 @@ from datetime import datetime
 API_BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:8000")
 
 AGENTS = {
-    "Max": {"icon": "🧠", "color": "#FF6B00", "bg": "#FFF3E0", "border": "#FF6B00"},
-    "Sarah": {"icon": "⚖️", "color": "#E65100", "bg": "#FFF8E1", "border": "#E65100"},
-    "Dave": {"icon": "📋", "color": "#F57C00", "bg": "#FFFDE7", "border": "#F57C00"},
-    "Luna": {"icon": "🏗️", "color": "#FF8F00", "bg": "#FFF3E0", "border": "#FF8F00"},
-    "Kai": {"icon": "🔨", "color": "#EF6C00", "bg": "#FBE9E7", "border": "#EF6C00"},
-    "Rex": {"icon": "🔍", "color": "#BF360C", "bg": "#FFCCBC", "border": "#BF360C"},
-    "Nova": {"icon": "🎤", "color": "#FF6B00", "bg": "#FFF3E0", "border": "#FF6B00"},
-    "Nova (Slides)": {"icon": "📊", "color": "#E65100", "bg": "#FFF8E1", "border": "#E65100"},
-    "Nova (Script)": {"icon": "🎙️", "color": "#FF8F00", "bg": "#FFF3E0", "border": "#FF8F00"},
-    "System": {"icon": "🚀", "color": "#999", "bg": "#F5F5F5", "border": "#DDD"},
-    "Human": {"icon": "👤", "color": "#2196F3", "bg": "#E3F2FD", "border": "#2196F3"},
+    "Max": {"icon": "🧠", "color": "#FF6B00", "bg": "#FFF3E0"},
+    "Sarah": {"icon": "⚖️", "color": "#E65100", "bg": "#FFF8E1"},
+    "Dave": {"icon": "📋", "color": "#F57C00", "bg": "#FFFDE7"},
+    "Luna": {"icon": "🏗️", "color": "#FF8F00", "bg": "#FFF3E0"},
+    "Kai": {"icon": "🔨", "color": "#EF6C00", "bg": "#FBE9E7"},
+    "Rex": {"icon": "🔍", "color": "#BF360C", "bg": "#FFCCBC"},
+    "Nova": {"icon": "🎤", "color": "#FF6B00", "bg": "#FFF3E0"},
+    "Nova (Slides)": {"icon": "📊", "color": "#E65100", "bg": "#FFF8E1"},
+    "Nova (Script)": {"icon": "🎙️", "color": "#FF8F00", "bg": "#FFF3E0"},
+    "System": {"icon": "🚀", "color": "#999", "bg": "#F5F5F5"},
 }
 
-# Global CSS - inject once
-GLOBAL_CSS = """
+CSS = """
 <style>
-/* Hide all Streamlit defaults */
-[data-testid="stHeader"] { display: none !important; }
-[data-testid="stSidebar"] { display: none !important; }
-footer { display: none !important; }
-
-/* Hide chat elements by default (only show when body has .chat-mode) */
-.chat-page, .chat-header, .chat-messages, .chat-bottom-bar, .progress-bar { display: none !important; }
-/* Hide create elements by default (only show when body has .create-mode) */
-.create-page, .create-card { display: none !important; }
-
-/* Chat mode styles */
-body.chat-mode .chat-page {
-    display: flex !important; flex-direction: column !important; height: 100vh !important;
-    background: #F5F0EB !important; margin: 0 !important; padding: 0 !important;
-}
-body.chat-mode .chat-header {
-    background: linear-gradient(135deg, #FF6B00 0%, #FF8F00 100%) !important;
-    color: white !important; padding: 12px 24px !important; display: flex !important;
-    align-items: center !important; justify-content: space-between !important;
-    flex-shrink: 0 !important; box-shadow: 0 2px 12px rgba(255,107,0,0.3) !important;
-}
-body.chat-mode .chat-header-title { font-size: 1.1rem !important; font-weight: 700 !important; }
-body.chat-mode .chat-header-sub { font-size: 0.75rem !important; opacity: 0.85 !important; }
-body.chat-mode .progress-bar { background: #FFF3E0 !important; padding: 0 24px !important; flex-shrink: 0 !important; }
-body.chat-mode .progress-track { background: #E0E0E0 !important; border-radius: 4px !important; height: 4px !important; overflow: hidden !important; }
-body.chat-mode .progress-fill { background: linear-gradient(90deg, #FF6B00, #FFB300) !important; height: 100% !important; transition: width 0.5s !important; }
-body.chat-mode .chat-messages { flex: 1 !important; overflow-y: auto !important; padding: 16px 20px !important; }
-body.chat-mode .chat-bottom-bar {
-    background: white !important; border-top: 1px solid #E8E0D8 !important;
-    padding: 10px 20px !important; display: flex !important; gap: 10px !important;
-    flex-shrink: 0 !important; flex-wrap: wrap !important;
-}
-
-/* Create mode styles */
-body.create-mode .create-page {
-    display: flex !important; flex-direction: column !important; align-items: center !important;
-    justify-content: center !important; min-height: 100vh !important;
-    background: linear-gradient(180deg, #FFF8F0 0%, #FFFFFF 40%) !important;
-    padding: 2rem !important;
-}
-body.create-mode .create-card {
-    display: block !important; background: white !important; border-radius: 24px !important;
-    box-shadow: 0 8px 40px rgba(255,107,0,0.08), 0 2px 12px rgba(0,0,0,0.04) !important;
-    padding: 3rem !important; max-width: 560px !important; width: 100% !important; text-align: center !important;
-}
-
-/* Message bubbles */
-.msg { display: flex; gap: 10px; margin-bottom: 14px; align-items: flex-start; }
-.msg-avatar {
-    width: 36px; height: 36px; border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 16px; flex-shrink: 0; box-shadow: 0 2px 6px rgba(0,0,0,0.12);
-}
-.msg-body { flex: 1; min-width: 0; }
-.msg-name { font-size: 0.7rem; font-weight: 700; margin-bottom: 2px; }
-.msg-bubble {
-    padding: 10px 14px; border-radius: 12px; border-top-left-radius: 4px;
-    font-size: 0.88rem; line-height: 1.55; box-shadow: 0 1px 4px rgba(0,0,0,0.06);
-}
-.msg-time { font-size: 0.6rem; color: #AAA; margin-top: 3px; }
-.sys-badge {
-    text-align: center; padding: 6px 14px; margin: 10px auto;
-    font-size: 0.75rem; color: #888; background: rgba(255,255,255,0.8);
-    border-radius: 16px; max-width: 70%; border: 1px solid #E8E0D8;
-}
-.sys-badge.error { background: #FFEBEE; color: #D32F2F; border-color: #FFCDD2; }
-
-/* Buttons */
+[data-testid="stHeader"], [data-testid="stSidebar"], footer { display: none !important; }
+.main .block-container { max-width: 100% !important; padding: 0 !important; }
 .stButton > button {
     background: linear-gradient(135deg, #FF6B00, #FF8F00) !important;
-    color: white !important; border: none !important; border-radius: 12px !important;
-    padding: 10px 20px !important; font-weight: 700 !important; font-size: 0.95rem !important;
-    box-shadow: 0 2px 8px rgba(255,107,0,0.25) !important;
+    color: white !important; border: none !important; border-radius: 20px !important;
+    padding: 8px 16px !important; font-weight: 600 !important; font-size: 0.85rem !important;
 }
-.stButton > button:hover { box-shadow: 0 4px 16px rgba(255,107,0,0.35) !important; }
-.stTextInput > div > div > input, .stTextArea > div > div > textarea {
-    border: 2px solid #FFD180 !important; border-radius: 12px !important;
-}
-.stTextInput > div > div > input:focus, .stTextArea > div > div > textarea:focus {
-    border-color: #FF6B00 !important; box-shadow: 0 0 0 3px rgba(255,107,0,0.1) !important;
-}
-
-/* Hide Streamlit content area margins */
-.main .block-container { max-width: 100% !important; padding: 0 !important; }
+.stButton > button:hover { opacity: 0.9 !important; }
+.stTextInput > div > div > input { border-radius: 20px !important; }
+.stTextArea > div > div > textarea { border-radius: 16px !important; }
 </style>
 """
 
+CHAT_HTML = """
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
 
-def api_request(method, endpoint, data=None):
+.hdr {
+    background: linear-gradient(135deg, #FF6B00, #FF8F00);
+    color: white; padding: 12px 16px;
+    display: flex; align-items: center; justify-content: space-between;
+    position: sticky; top: 0; z-index: 10;
+    box-shadow: 0 2px 8px rgba(255,107,0,0.2);
+}
+.hdr-title { font-weight: 700; font-size: 0.95rem; }
+.hdr-sub { font-size: 0.7rem; opacity: 0.85; margin-top: 2px; }
+
+.pbar { background: #FFF3E0; }
+.ptrack { background: #E8E0D8; height: 3px; }
+.pfill { background: linear-gradient(90deg, #FF6B00, #FFB300); height: 100%; transition: width 0.3s; }
+
+.chat {
+    padding: 10px 10px 10px 6px;
+    background: #FAFAFA;
+    min-height: 60vh;
+    overflow-y: auto;
+}
+
+.msg {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 14px;
+    align-items: flex-start;
+}
+.ava {
+    width: 32px; height: 32px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; flex-shrink: 0; margin-top: 2px;
+}
+.body { flex: 1; min-width: 0; }
+.name { font-size: 0.68rem; font-weight: 600; margin-bottom: 2px; }
+.bub {
+    padding: 8px 12px;
+    border-radius: 16px;
+    border-top-left-radius: 4px;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    word-wrap: break-word;
+    white-space: pre-wrap;
+}
+.time { font-size: 0.58rem; color: #BBB; margin-top: 2px; }
+
+.sys {
+    text-align: center; padding: 4px 10px;
+    margin: 8px auto; font-size: 0.7rem;
+    color: #AAA; background: none;
+}
+
+.bot {
+    display: flex; gap: 6px; padding: 8px 12px;
+    border-top: 1px solid #EEE; background: white;
+    position: sticky; bottom: 0;
+}
+.bot button {
+    flex: 1; padding: 8px; border: none; border-radius: 16px;
+    background: linear-gradient(135deg, #FF6B00, #FF8F00);
+    color: white; font-weight: 600; font-size: 0.8rem; cursor: pointer;
+}
+</style>
+</head>
+<body>
+<div class="hdr">
+    <div><div class="hdr-title">🚀 {theme}</div><div class="hdr-sub">{status}</div></div>
+    <div style="font-size:0.6rem;opacity:0.7">{sid}</div>
+</div>
+<div class="pbar"><div class="ptrack"><div class="pfill" style="width:{progress}%"></div></div></div>
+<div class="chat">{messages}</div>
+<div class="bot">
+    <button onclick="window.parent.postMessage('new','*')">🆕 New</button>
+    <button onclick="window.parent.postMessage('refresh','*')">🔄 Refresh</button>
+</div>
+</body>
+</html>
+"""
+
+
+def api(method, ep, data=None):
     try:
-        url = f"{API_BASE_URL}{endpoint}"
-        if method == "GET":
-            r = requests.get(url, timeout=10)
-        elif method == "POST":
-            r = requests.post(url, json=data or {}, timeout=10)
-        else:
-            return None
+        url = f"{API_BASE_URL}{ep}"
+        r = requests.get(url, timeout=6) if method == "GET" else requests.post(url, json=data or {}, timeout=6)
         r.raise_for_status()
         return r.json()
     except Exception:
         return None
 
 
-def format_time():
+def ftime():
     return datetime.now().strftime("%H:%M")
 
 
-def render_bubbles(messages):
+def render_msgs(msgs):
     parts = []
-    for msg in messages:
-        et = msg.get("event_type", "message")
-        an = msg.get("agent_name", "System")
-        m = msg.get("message", "")
+    for m in msgs:
+        et = m.get("event_type", "message")
+        an = m.get("agent_name", "System")
+        txt = m.get("message", "").replace("{", "&#123;").replace("}", "&#125;")
         if et == "thinking":
             continue
-        ag = AGENTS.get(an, {"icon": "🤖", "color": "#95A5A6", "bg": "#F5F5F5", "border": "#CCC"})
-        ic, co, bg, br = ag["icon"], ag["color"], ag["bg"], ag["border"]
+        ag = AGENTS.get(an, {"icon": "🤖", "color": "#999", "bg": "#F5F5F5"})
+        ic, co, bg = ag["icon"], ag["color"], ag["bg"]
         if et in ("phase_start", "phase_complete"):
-            parts.append(f'<div class="sys-badge">{m}</div>')
+            parts.append(f'<div class="sys">{txt}</div>')
         elif et == "error":
-            parts.append(f'<div class="sys-badge error">{m}</div>')
+            parts.append(f'<div class="sys" style="color:#D32F2F">{txt}</div>')
         elif et == "message":
             parts.append(
                 f'<div class="msg">'
-                f'<div class="msg-avatar" style="background:linear-gradient(135deg,{co},{br})">{ic}</div>'
-                f'<div class="msg-body">'
-                f'<div class="msg-name" style="color:{co}">{an}</div>'
-                f'<div class="msg-bubble" style="background:{bg};border-left:3px solid {co}">{m}</div>'
-                f'<div class="msg-time">{format_time()}</div>'
+                f'<div class="ava" style="background:{bg}">{ic}</div>'
+                f'<div class="body">'
+                f'<div class="name" style="color:{co}">{an}</div>'
+                f'<div class="bub" style="background:{bg}">{txt}</div>'
+                f'<div class="time">{ftime()}</div>'
                 f'</div></div>'
             )
     return "\n".join(parts)
@@ -165,221 +171,215 @@ def render_bubbles(messages):
 def main():
     st.set_page_config(page_title="Hackathon Copilot", page_icon="🚀", layout="wide", initial_sidebar_state="collapsed")
 
-    # Initialize state
     if "session_id" not in st.session_state:
         st.session_state.session_id = None
-    if "stream_messages" not in st.session_state:
-        st.session_state.stream_messages = []
-    if "event_index" not in st.session_state:
-        st.session_state.event_index = 0
-    if "workflow_started" not in st.session_state:
-        st.session_state.workflow_started = False
-    if "_mode" not in st.session_state:
-        st.session_state._mode = "create"  # "create" or "chat"
+    if "msgs" not in st.session_state:
+        st.session_state.msgs = []
+    if "eidx" not in st.session_state:
+        st.session_state.eidx = 0
+    if "started" not in st.session_state:
+        st.session_state.started = False
 
-    in_chat = st.session_state.session_id is not None
+    st.markdown(CSS, unsafe_allow_html=True)
 
-    # Inject global CSS
-    st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
-
-    # Set body class via JS
-    mode_class = "chat-mode" if in_chat else "create-mode"
-    st.components.v1.html(
-        f"""<script>
-        document.body.className = '{mode_class}';
-        </script>""",
-        height=0
-    )
-
-    if in_chat:
-        render_chat()
-    else:
+    if not st.session_state.session_id:
         render_create()
+    else:
+        render_chat()
 
 
 def render_create():
-    # Create page container (hidden when body doesn't have .create-mode)
-    st.markdown('<div class="create-page">', unsafe_allow_html=True)
-
     st.markdown("""
-    <div class="create-card">
-        <div class="create-logo">🚀</div>
-        <div class="create-title">Hackathon Copilot</div>
-        <div class="create-sub">AI-Powered Multi-Agent Team for Hackathon Success</div>
-    </div>
+    <div style="display:flex;align-items:center;justify-content:center;min-height:90vh;background:linear-gradient(180deg,#FFF8F0,#FFFFFF)">
+    <div style="text-align:center;padding:2rem">
+        <div style="font-size:4rem;margin-bottom:0.5rem">🚀</div>
+        <div style="font-size:1.8rem;font-weight:800;color:#FF6B00;margin-bottom:0.3rem">Hackathon Copilot</div>
+        <div style="color:#999;font-size:0.9rem;margin-bottom:2rem">AI-Powered Multi-Agent Team</div>
+    </div></div>
     """, unsafe_allow_html=True)
 
-    theme = st.text_input(
-        "🎯 Hackathon Theme",
-        placeholder="e.g., AI for Education",
-        key="create_theme"
-    )
-    constraints = st.text_area(
-        "📏 Constraints (optional)",
-        value="48-hour hackathon, solo developer",
-        key="create_constraints"
-    )
+    theme = st.text_input("🎯 Theme", placeholder="e.g., AI for Education", key="c_theme")
+    const = st.text_area("📏 Constraints", value="48-hour hackathon, solo developer", key="c_const")
 
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        if st.button("🚀 Start Session", type="primary", disabled=not theme, use_container_width=True):
-            with st.spinner("Creating session..."):
-                result = api_request("POST", "/sessions", {"theme": theme, "constraints": constraints})
-            if result:
-                st.session_state.session_id = result["session_id"]
-                st.session_state.stream_messages = []
-                st.session_state.event_index = 0
-                st.session_state.workflow_started = False
-                st.rerun()
-            else:
-                st.error("Failed to create session. Make sure API server is running.")
-
-    st.markdown("</div>", unsafe_allow_html=True)
+    if st.button("🚀 Start", type="primary", disabled=not theme, use_container_width=True):
+        with st.spinner("Creating..."):
+            res = api("POST", "/sessions", {"theme": theme, "constraints": const})
+        if res:
+            st.session_state.session_id = res["session_id"]
+            st.session_state.msgs = []
+            st.session_state.eidx = 0
+            st.session_state.started = False
+            st.rerun()
+        else:
+            st.error("Cannot reach API server.")
 
 
 def render_chat():
-    session_id = st.session_state.session_id
+    sid = st.session_state.session_id
+
+    # Initialize loading state
+    if "_loading_judging" not in st.session_state:
+        st.session_state._loading_judging = False
+    if "_prev_layer" not in st.session_state:
+        st.session_state._prev_layer = ""
 
     # Poll events
     try:
-        r = requests.get(
-            f"{API_BASE_URL}/sessions/{session_id}/events",
-            params={"since_index": st.session_state.event_index},
-            timeout=3
-        )
+        r = requests.get(f"{API_BASE_URL}/sessions/{sid}/events", params={"since_index": st.session_state.eidx}, timeout=3)
         if r.status_code == 200:
-            ed = r.json()
-            for ev in ed.get("events", []):
-                st.session_state.stream_messages.append(ev)
-                st.session_state.event_index = ev.get("index", 0) + 1
+            resp = r.json()
+            new_events = resp.get("events", [])
+            if new_events:
+                for ev in new_events:
+                    st.session_state.msgs.append(ev)
+                    st.session_state.eidx = ev.get("index", 0) + 1
     except Exception:
         pass
 
-    state = api_request("GET", f"/sessions/{session_id}")
+    state = api("GET", f"/sessions/{sid}")
     if not state:
-        st.error("Failed to load session")
-        return
+        st.error("No session"); return
 
-    current_layer = state.get("current_layer", "")
+    layer = state.get("current_layer", "")
+    order = ["idle","ideation","judging","hitl_1","planning","architecting","building","critiquing","hitl_2","pitching","complete"]
     progress = 0
-    layers_order = [
-        "idle", "ideation", "judging", "hitl_1", "planning",
-        "architecting", "building", "critiquing", "hitl_2", "pitching", "complete"
-    ]
-    try:
-        progress = (layers_order.index(current_layer) + 1) / len(layers_order) * 100
-    except ValueError:
-        pass
+    try: progress = (order.index(layer)+1)/len(order)*100
+    except: pass
 
-    status_map = {
-        "idle": "🟡 Ready",
-        "ideation": "🧠 Max is brainstorming...",
-        "judging": "⚖️ Sarah is evaluating...",
-        "hitl_1": "⏸️ เลือกไอเดียที่ต้องการ",
-        "planning": "📋 Dave is planning...",
-        "architecting": "🏗️ Luna is designing...",
-        "building": "🔨 Kai is coding...",
-        "critiquing": "🔍 Rex is reviewing...",
-        "hitl_2": "⏸️ ตรวจสอบโค้ด",
-        "pitching": "🎤 Nova is preparing pitch...",
-        "complete": "✅ เสร็จสมบูรณ์!",
-        "error": "❌ เกิดข้อผิดพลาด",
-    }
-    status = status_map.get(current_layer, current_layer)
+    status = {
+        "idle":"🟡 Ready","ideation":"🧠 Max brainstorming...","judging":"⚖️ Sarah evaluating...",
+        "hitl_1":"⏸️ เลือกไอเดีย","planning":"📋 Dave planning...","architecting":"🏗️ Luna designing...",
+        "building":"🔨 Kai coding...","critiquing":"🔍 Rex reviewing...","hitl_2":"⏸️ ตรวจโค้ด",
+        "pitching":"🎤 Nova...","complete":"✅ เสร็จ!","error":"❌ Error",
+    }.get(layer, layer)
 
-    # Chat page container
-    st.markdown(f"""
-    <div class="chat-page">
-        <div class="chat-header">
-            <div>
-                <div class="chat-header-title">🚀 {state.get('theme', 'Hackathon Copilot')}</div>
-                <div class="chat-header-sub">{status}</div>
-            </div>
-            <div style="font-size:0.7rem;opacity:0.8">{session_id[:8]}</div>
-        </div>
-        <div class="progress-bar">
-            <div class="progress-track">
-                <div class="progress-fill" style="width:{progress}%"></div>
-            </div>
-        </div>
+    msgs_html = render_msgs(st.session_state.msgs)
+    theme_val = (state.get("theme") or "Hackathon").replace("{","&#123;").replace("}","&#125;")
+    status_safe = (status or "").replace("{","&#123;").replace("}","&#125;")
+
+    full_html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+    <meta charset="UTF-8">
+    <style>
+    * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }}
+    .hdr {{
+        background: linear-gradient(135deg, #FF6B00, #FF8F00);
+        color: white; padding: 12px 16px;
+        display: flex; align-items: center; justify-content: space-between;
+        position: sticky; top: 0; z-index: 10;
+        box-shadow: 0 2px 8px rgba(255,107,0,0.2);
+    }}
+    .hdr-title {{ font-weight: 700; font-size: 0.95rem; }}
+    .hdr-sub {{ font-size: 0.7rem; opacity: 0.85; margin-top: 2px; }}
+    .pbar {{ background: #FFF3E0; }}
+    .ptrack {{ background: #E8E0D8; height: 3px; }}
+    .pfill {{ background: linear-gradient(90deg, #FF6B00, #FFB300); height: 100%; transition: width 0.3s; }}
+    .chat {{ padding: 10px 10px 10px 6px; background: #FAFAFA; min-height: 60vh; overflow-y: auto; }}
+    .msg {{ display: flex; gap: 8px; margin-bottom: 14px; align-items: flex-start; }}
+    .ava {{ width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; margin-top: 2px; }}
+    .body {{ flex: 1; min-width: 0; }}
+    .name {{ font-size: 0.68rem; font-weight: 600; margin-bottom: 2px; }}
+    .bub {{ padding: 8px 12px; border-radius: 16px; border-top-left-radius: 4px; font-size: 0.82rem; line-height: 1.5; word-wrap: break-word; white-space: pre-wrap; }}
+    .time {{ font-size: 0.58rem; color: #BBB; margin-top: 2px; }}
+    .sys {{ text-align: center; padding: 4px 10px; margin: 8px auto; font-size: 0.7rem; color: #AAA; background: none; }}
+    .bot {{ display: flex; gap: 6px; padding: 8px 12px; border-top: 1px solid #EEE; background: white; position: sticky; bottom: 0; }}
+    .bot button {{ flex: 1; padding: 8px; border: none; border-radius: 16px; background: linear-gradient(135deg, #FF6B00, #FF8F00); color: white; font-weight: 600; font-size: 0.8rem; cursor: pointer; }}
+    </style>
+    </head>
+    <body>
+    <div class="hdr">
+        <div><div class="hdr-title">🚀 {theme_val}</div><div class="hdr-sub">{status_safe}</div></div>
+        <div style="font-size:0.6rem;opacity:0.7">{sid[:8]}</div>
     </div>
-    """, unsafe_allow_html=True)
+    <div class="pbar"><div class="ptrack"><div class="pfill" style="width:{progress}%"></div></div></div>
+    <div class="chat">{msgs_html}</div>
+    <div class="bot">
+        <button onclick="window.parent.postMessage('new','*')">🆕 New</button>
+        <button onclick="window.parent.postMessage('refresh','*')">🔄 Refresh</button>
+    </div>
+    </body>
+    </html>
+    """
 
-    # Idea selection modal
-    show_idea = (current_layer == "hitl_1" and not state.get("selected_idea"))
-    ideas = state.get("ideas", []) if show_idea else None
+    st.components.v1.html(full_html, height=600, scrolling=True)
 
-    if show_idea and ideas:
-        st.markdown("### 🎯 เลือกไอเดียที่ต้องการ")
-        st.caption("คลิกที่การ์ดเพื่อเลือกไอเดีย แล้ว AI จะเริ่มพัฒนาต่อ")
-        cols = st.columns(min(len(ideas), 3))
-        for i, idea in enumerate(ideas):
-            with cols[i % 3]:
-                with st.container(border=True):
-                    st.markdown(f"### {idea.get('title','')}")
-                    st.markdown(idea.get("description",""))
-                    if idea.get("key_features"):
-                        for f in idea["key_features"][:3]:
-                            st.markdown(f"• {f}")
-                    st.markdown(f"**Tech:** {', '.join(idea.get('tech_stack',[]))}")
-                    if st.button("📌 เลือกไอเดียนี้นะ", key=f"sel_{idea.get('id')}", use_container_width=True):
-                        result = api_request("POST", f"/sessions/{session_id}/select-idea", {"idea_id": idea.get("id")})
-                        if result:
-                            st.session_state.stream_messages.append({
-                                "event_type": "message",
-                                "agent_name": "System",
-                                "emoji": "✅",
-                                "role": "HITL",
-                                "message": f"เลือก idea #{idea.get('id')}: '{idea.get('title','')}' กำลังเริ่มพัฒนา..."
-                            })
-                            st.rerun()
+    # Idea selection - only show after Sarah's critique is loaded
+    if layer == "hitl_1" and not state.get("selected_idea"):
+        ideas = state.get("ideas", [])
+        if ideas:
+            # Check if Sarah's messages are loaded
+            has_sarah = any(m.get("agent_name") == "Sarah" for m in st.session_state.msgs)
+            has_max_response = any(
+                m.get("agent_name") == "Max" and "ตอบกลับ" in m.get("message", "")
+                for m in st.session_state.msgs
+            )
+            
+            if has_sarah and has_max_response:
+                # All events loaded, show idea selection
+                st.markdown("### 🎯 เลือกไอเดีย")
+                cols = st.columns(min(len(ideas), 3))
+                for i, idea in enumerate(ideas):
+                    with cols[i % 3]:
+                        with st.container(border=True):
+                            st.write(f"### {idea.get('title','')}")
+                            st.write(idea.get("description","")[:100])
+                            st.write(f"**Tech:** {', '.join(idea.get('tech_stack',[]))}")
+                            if st.button("📌 เลือก", key=f"pi_{idea.get('id')}", use_container_width=True):
+                                api("POST", f"/sessions/{sid}/select-idea", {"idea_id": idea.get("id")})
+                                st.session_state.msgs.append({"event_type":"message","agent_name":"System","message":f"✅ เลือก: {idea.get('title','')}"})
+                                st.rerun()
+            else:
+                # Still loading Sarah's critique
+                st.markdown("""
+                <div style="text-align:center;padding:20px;color:#FF6B00">
+                    <div style="font-size:2rem;margin-bottom:8px">⚖️</div>
+                    <div style="font-weight:600">กำลังรอความเห็นจาก Sarah...</div>
+                    <div style="font-size:0.8rem;color:#999;margin-top:4px">Sarah กำลังวิเคราะห์และให้คะแนนไอเดียอยู่</div>
+                </div>
+                """, unsafe_allow_html=True)
 
-    # Chat messages via HTML component
-    st.components.v1.html(
-        f'<div class="chat-messages">{render_bubbles(st.session_state.stream_messages)}</div>',
-        height=420,
-        scrolling=True
-    )
-
-    # Code review modal
-    show_review = (current_layer == "hitl_2")
-    if show_review:
-        st.markdown("### 🔍 ตรวจสอบโค้ด")
-        st.caption("โค้ดถูกสร้างเรียบร้อยแล้ว คุณต้องการอนุมัติหรือแก้ไข?")
+    # Code review
+    if layer == "hitl_2":
         c1, c2 = st.columns(2)
         with c1:
-            if st.button("✅ อนุมัติ", type="primary", use_container_width=True):
-                api_request("POST", f"/sessions/{session_id}/review-code", {"approved": True})
-                st.rerun()
+            if st.button("✅ อนุมัติ", use_container_width=True):
+                api("POST", f"/sessions/{sid}/review-code", {"approved": True}); st.rerun()
         with c2:
-            fb = st.text_area("Change requests (optional)", key="review_fb")
             if st.button("❌ แก้ไข", use_container_width=True):
-                api_request("POST", f"/sessions/{session_id}/review-code", {"approved": False, "feedback": fb})
-                st.rerun()
+                fb = st.text_area("Feedback", key="rfb")
+                api("POST", f"/sessions/{sid}/review-code", {"approved": False, "feedback": fb}); st.rerun()
 
-    # Bottom bar
-    st.markdown('<div class="chat-bottom-bar">', unsafe_allow_html=True)
-    bc1, bc2 = st.columns([1, 1])
-    with bc1:
-        if st.button("🆕 New Session", use_container_width=True):
-            st.session_state.session_id = None
-            st.session_state.stream_messages = []
-            st.session_state.workflow_started = False
+    # Auto-start
+    if not state.get("is_paused") and not st.session_state.started:
+        st.session_state.started = True
+        api("POST", f"/sessions/{sid}/start")
+
+    # Auto-refresh logic:
+    # - When paused (HITL): do NOT auto-refresh to prevent flicker
+    # - When running: only refresh if new events arrived
+    is_paused = state.get("is_paused", False)
+    prev_count = st.session_state.get("_prev_msg_count", 0)
+    curr_count = len(st.session_state.msgs)
+    
+    # Store current count
+    st.session_state._prev_msg_count = curr_count
+    
+    if is_paused:
+        # Paused at HITL - stop auto-refresh to prevent flicker
+        # User needs to interact manually
+        pass
+    elif st.session_state.started:
+        # Running - only rerun if we got new events
+        if curr_count > prev_count:
+            time.sleep(0.5)
             st.rerun()
-    with bc2:
-        if st.button("🔄 Refresh", use_container_width=True):
+        else:
+            # No new events, wait before checking again
+            time.sleep(1.5)
             st.rerun()
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    # Auto-start workflow
-    if not state.get("is_paused") and not st.session_state.workflow_started:
-        st.session_state.workflow_started = True
-        api_request("POST", f"/sessions/{session_id}/start")
-
-    # Auto-refresh
-    if not state.get("is_paused") and st.session_state.workflow_started:
-        time.sleep(0.5)
-        st.rerun()
 
 
 if __name__ == "__main__":
