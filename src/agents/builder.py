@@ -1,6 +1,8 @@
 """
 Builder Agent (Kai) - Senior Developer
-Generates actual Python/FastAPI code for the project.
+Generates skeleton Python/FastAPI code for hackathon projects.
+Focuses on function signatures, TODO comments, and project structure
+rather than complete implementations.
 """
 
 from typing import List
@@ -27,7 +29,7 @@ class BuilderResult(BaseModel):
 
 
 class BuilderAgent(BaseAgent):
-    """Kai - Senior Developer: Generates actual code."""
+    """Kai - Senior Developer: Generates skeleton code structure."""
 
     def __init__(self, api_client: QwenAPIClient):
         super().__init__(api_client, "builder")
@@ -106,7 +108,7 @@ class BuilderAgent(BaseAgent):
         files_list: List[str],
         constraints: str,
     ) -> BuilderResult:
-        """Generate code files for the project."""
+        """Generate skeleton code files for the hackathon project."""
         template = self.prompt_template
         system_prompt = template.get("system_prompt", "")
         user_template = template.get("user_prompt_template", "")
@@ -121,45 +123,48 @@ class BuilderAgent(BaseAgent):
         from src.core.json_parser import StructuredOutputParser
         
         # Method 1: Use XML-style tags (more reliable than JSON for code)
+        system_content = (
+            "You are Kai, a senior developer creating SKELETON CODE for: " + title + "\n\n"
+            "Create skeleton code with function signatures and TODO comments.\n"
+            "DO NOT write complete implementations - just the structure!\n\n"
+            "Respond using this EXACT format (use XML-style tags, NOT JSON):\n\n"
+            "<message>\n"
+            "Your opening message here\n"
+            "</message>\n\n"
+            "<file>\n"
+            "<path>path/to/file1.py</path>\n"
+            "<description>Description of this file</description>\n"
+            "<language>python</language>\n"
+            "<code>\n"
+            "# Skeleton code with TODOs\n"
+            "# TODO: implement this function\n"
+            "def my_function(param: str) -> str:\n"
+            "    \"\"\"Process the input and return result.\"\"\"\n"
+            "    pass\n"
+            "</code>\n"
+            "</file>\n\n"
+            "<file>\n"
+            "<path>README.md</path>\n"
+            "<description>Project README for participants</description>\n"
+            "<language>markdown</language>\n"
+            "<code>\n"
+            "# Project Title\n"
+            "Project overview and setup instructions\n"
+            "</code>\n"
+            "</file>\n\n"
+            "<closing>\n"
+            "Your closing message here\n"
+            "</closing>\n\n"
+            "IMPORTANT RULES:\n"
+            "- Use XML-style tags exactly as shown\n"
+            "- Put ALL code inside <code> tags\n"
+            "- Use single quotes in Python code to avoid escaping issues\n"
+            "- Create SKELETON code with TODOs, not complete implementations\n"
+            "- Include a README.md file explaining what participants need to do\n"
+            "- Do NOT include any other text outside the tags"
+        )
         xml_messages = [
-            {"role": "system", "content": f"""You are Kai, a senior developer generating code for: {title}
-
-Respond using this EXACT format (use XML-style tags, NOT JSON):
-
-<message>
-Your opening message here
-</message>
-
-<file>
-<path>path/to/file1.py</path>
-<description>Description of this file</description>
-<language>python</language>
-<code>
-# Your Python code here
-# Use single quotes for strings inside code to avoid escaping
-print('hello world')
-</code>
-</file>
-
-<file>
-<path>path/to/file2.py</path>
-<description>Another file</description>
-<language>python</language>
-<code>
-# More code here
-</code>
-</file>
-
-<closing>
-Your closing message here
-</closing>
-
-IMPORTANT RULES:
-- Use XML-style tags exactly as shown
-- Put ALL code inside <code> tags
-- Use single quotes in Python code to avoid escaping issues
-- Generate complete, working code files
-- Do NOT include any other text outside the tags"""},
+            {"role": "system", "content": system_content},
             {"role": "user", "content": user_prompt},
         ]
         
@@ -168,17 +173,17 @@ IMPORTANT RULES:
                 messages=xml_messages,
                 model=self.model,
                 temperature=self.temperature,
-                max_tokens=max(self.max_tokens, 8000),  # More tokens for code
+                max_tokens=max(self.max_tokens, 12000),  # More tokens for skeleton
             )
             
             code_files_data = self._parse_xml_response(raw_response, title)
             
             if code_files_data:
                 # Extract message and closing from response
-                message = self._extract_xml_text(raw_response, "message") or "Code generated successfully"
-                closing = self._extract_xml_text(raw_response, "closing") or "Please review the generated code."
+                message = self._extract_xml_text(raw_response, "message") or "Skeleton code generated successfully"
+                closing = self._extract_xml_text(raw_response, "closing") or "Please review the skeleton structure."
                 
-                logger.info(f"Builder parsed {len(code_files_data)} code files (XML mode)")
+                logger.info(f"Builder parsed {len(code_files_data)} skeleton files (XML mode)")
                 return BuilderResult(
                     message=message,
                     code_files=[CodeFileResult(**cf) for cf in code_files_data],
@@ -202,13 +207,13 @@ IMPORTANT RULES:
                 messages=json_messages,
                 model=self.model,
                 temperature=self.temperature,
-                max_tokens=self.max_tokens,
+                max_tokens=max(self.max_tokens, 12000),
                 response_format="json_object",
             )
             data = StructuredOutputParser.parse_dict(raw_response)
             code_files_data = data.get("code_files", [])
             if code_files_data:
-                logger.info(f"Builder parsed {len(code_files_data)} code files (JSON mode)")
+                logger.info(f"Builder parsed {len(code_files_data)} skeleton files (JSON mode)")
                 return BuilderResult(
                     message=data.get("message", ""),
                     code_files=[CodeFileResult(**cf) for cf in code_files_data if "filepath" in cf and "content" in cf],
@@ -219,7 +224,7 @@ IMPORTANT RULES:
         
         # Method 3: Raw text format with code blocks
         raw_messages = [
-            {"role": "system", "content": f"You are Kai, a senior developer. Generate code for: {title}\n\nRespond with code blocks in this format:\n---BEGIN FILE: path/to/file.py---\ndescription: description here\n```python\n# code here\n```\n---END FILE---"},
+            {"role": "system", "content": f"You are Kai, a senior developer creating SKELETON CODE for: {title}\n\nRespond with code blocks in this format:\n---BEGIN FILE: path/to/file.py---\ndescription: description here\n```python\n# skeleton code with TODOs here\n```\n---END FILE---"},
             {"role": "user", "content": user_prompt},
         ]
         
@@ -228,41 +233,98 @@ IMPORTANT RULES:
                 messages=raw_messages,
                 model=self.model,
                 temperature=self.temperature,
-                max_tokens=max(self.max_tokens, 8000),
+                max_tokens=max(self.max_tokens, 12000),
             )
             
             code_files_data = self._parse_raw_files(raw_response, title)
             
             if code_files_data:
-                logger.info(f"Builder parsed {len(code_files_data)} code files (raw mode)")
+                logger.info(f"Builder parsed {len(code_files_data)} skeleton files (raw mode)")
                 return BuilderResult(
-                    message="Code generated successfully",
+                    message="Skeleton code generated successfully",
                     code_files=[CodeFileResult(**cf) for cf in code_files_data],
-                    closing_message="Please review the generated code.",
+                    closing_message="Please review the skeleton structure.",
                 )
         except Exception as e:
             logger.warning(f"Builder raw mode failed: {e}, using fallback")
         
-        # Fallback
+        # Fallback - Create basic skeleton structure
         logger.error("All Builder methods failed, using fallback")
         title_safe = title if title else "Project"
         return BuilderResult(
-            message=f"Code generation for {title_safe} - fallback mode",
+            message=f"Skeleton code for {title_safe} - fallback mode",
             code_files=[
+                CodeFileResult(
+                    filepath="README.md",
+                    description="Project README for hackathon participants",
+                    content=f"""# {title_safe}
+
+## Project Overview
+Hackathon project skeleton generated by AI.
+
+## Quick Start
+1. Install dependencies: `pip install -r requirements.txt`
+2. Run the app: `uvicorn main:app --reload`
+3. Open http://localhost:8000/docs for API documentation
+
+## TODOs
+- [ ] Implement core business logic
+- [ ] Add database models and connections
+- [ ] Create API endpoints
+- [ ] Add error handling
+- [ ] Write tests
+- [ ] Deploy the application
+
+## Tech Stack
+- FastAPI - Web framework
+- Pydantic - Data validation
+- SQLite/PostgreSQL - Database
+
+## Architecture
+See the architecture document for detailed design decisions.
+
+## Getting Help
+- Check the FastAPI docs: http://localhost:8000/docs
+- Review the skeleton code files for TODO comments
+- Start with the main entry point and work outward
+""",
+                    language="markdown"
+                ),
                 CodeFileResult(
                     filepath="main.py",
                     description="FastAPI application entry point",
-                    content=f"from fastapi import FastAPI\n\napp = FastAPI(title='{title_safe}')\n\n@app.get('/')\nasync def root():\n    return {{'message': 'Welcome to {title_safe}'}}\n\n@app.get('/health')\nasync def health():\n    return {{'status': 'ok'}}\n",
+                    content=f"""from fastapi import FastAPI
+
+app = FastAPI(title='{title_safe}')
+
+
+@app.get('/')
+async def root():
+    '''Root endpoint.'''
+    # TODO: Add welcome page or API documentation
+    return {{'message': 'Welcome to {title_safe}'}}
+
+
+@app.get('/health')
+async def health():
+    '''Health check endpoint.'''
+    # TODO: Add database health check
+    return {{'status': 'ok'}}
+
+
+# TODO: Add more endpoints here
+# See architecture document for API routes
+""",
                     language="python"
                 ),
                 CodeFileResult(
                     filepath="requirements.txt",
                     description="Project dependencies",
-                    content="fastapi\nuvicorn\n",
+                    content="fastapi\nuvicorn\npydantic\n",
                     language="text"
                 )
             ],
-            closing_message=f"Created basic structure for {title_safe}.",
+            closing_message=f"Created basic skeleton for {title_safe}. Start implementing the TODOs!",
         )
 
     @staticmethod

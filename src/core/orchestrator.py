@@ -508,7 +508,7 @@ class Orchestrator:
             title=state.selected_idea.title if state.selected_idea else "",
             architecture=state.architecture,
             files_list=[m.title for m in state.milestones],
-            constraints=state.constraints,
+            constraints=state.constraints + "\n\nIMPORTANT: Generate SKELETON code with TODO comments, not complete implementations. Create ALL necessary files based on the architecture. No file limit - include README.md for participants.",
         )
 
         # Store generated code files
@@ -522,14 +522,15 @@ class Orchestrator:
             )
 
         # Kai presents his work
-        kai_msg = f"🔨 **Kai (Developer): เขียนโค้ดเสร็จแล้ว!**\n\n"
-        kai_msg += f"ผมสร้างโปรเจกต์ **{state.selected_idea.title if state.selected_idea else 'N/A'}** เรียบร้อย\n\n"
+        kai_msg = f"🔨 **Kai (Developer): สร้าง Skeleton Code เรียบร้อย!**\n\n"
+        kai_msg += f"ผมสร้างโครงโปรเจกต์ **{state.selected_idea.title if state.selected_idea else 'N/A'}** เรียบร้อย\n\n"
         kai_msg += f"📁 **ไฟล์ที่สร้าง:** {len(result.code_files)} ไฟล์\n\n"
         kai_msg += f"📄 **ไฟล์สำคัญ:**\n"
         for f in result.code_files[:8]:
             kai_msg += f"• `{f.filepath}`\n"
         kai_msg += f"\n✅ **Tech stack:** {', '.join(state.selected_idea.tech_stack if state.selected_idea else [])}\n"
-        kai_msg += f"\nโค้ดทุกอย่างเขียนตาม architecture ที่ Luna ออกแบบไว้\n"
+        kai_msg += f"\nผมสร้าง **skeleton code** พร้อม TODO comments ให้แล้ว\n"
+        kai_msg += f"นักศึกษาสามารถเริ่มพัฒนาต่อได้ทันที โดยดู TODO ในแต่ละไฟล์\n"
         kai_msg += f"พร้อมส่งให้ Rex ทำ code review แล้วครับ!"
         
         await emit_agent_message(
@@ -574,8 +575,8 @@ class Orchestrator:
 
         if result.status == "approved":
             # Rex presents approval with details
-            rex_msg = f"✅ **Rex: Code Review Approved!**\n\n"
-            rex_msg += f"โค้ดผ่านการตรวจสอบแล้ว! ไม่มีปัญหาสำคัญ\n"
+            rex_msg = f"✅ **Rex: Skeleton Code Review Approved!**\n\n"
+            rex_msg += f"โครง skeleton ผ่านการตรวจสอบแล้ว! ไม่มีปัญหาสำคัญ\n"
             rex_msg += f"\n📊 **คะแนนคุณภาพ:** ผ่านมาตรฐาน"
             if result.issues:
                 rex_msg += f"\n\n💡 **ข้อเสนอแนะเพิ่มเติม:**\n"
@@ -625,11 +626,11 @@ class Orchestrator:
             _save_state(state)
         else:
             # Rex presents issues with details
-            rex_msg = f"❌ **Rex: พบปัญหา {len(result.issues)} จุด**\n\n"
+            rex_msg = f"❌ **Rex: พบปัญหา {len(result.issues)} จุดใน Skeleton**\n\n"
             rex_msg += f"🔴 **ปัญหาที่พบ:**\n"
             for i, issue in enumerate(result.issues[:5], 1):
                 rex_msg += f"{i}. {issue}\n"
-            rex_msg += f"\n⚠️ ผมแนะนำให้กลับไปแก้ไขโค้ดครับ Kai"
+            rex_msg += f"\n⚠️ ผมแนะนำให้กลับไปแก้ skeleton ครับ Kai"
             
             await emit_agent_message(
                 state.session_id, "critic", "Rex", "🔍", "QA Lead",

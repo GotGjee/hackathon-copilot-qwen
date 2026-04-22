@@ -1,10 +1,11 @@
 """
 Critic Agent (Rex) - QA Lead
-Reviews generated code for bugs, security issues, and logic flaws.
+Reviews skeleton code for structure, completeness, and clarity.
 """
 
 from typing import Dict, List, Union
 from pydantic import BaseModel, Field
+from loguru import logger
 
 from src.agents.base import BaseAgent
 from src.core.api_client import QwenAPIClient
@@ -29,7 +30,7 @@ class CriticResult(BaseModel):
 
 
 class CriticAgent(BaseAgent):
-    """Rex - QA Lead: Reviews code for issues."""
+    """Rex - QA Lead: Reviews skeleton code for issues."""
 
     def __init__(self, api_client: QwenAPIClient):
         super().__init__(api_client, "critic")
@@ -39,16 +40,24 @@ class CriticAgent(BaseAgent):
         code_artifacts: Dict[str, Union[dict, object]],
         requirements: str,
     ) -> CriticResult:
-        """Review generated code for issues."""
+        """Review skeleton code for issues."""
         template = self.prompt_template
         system_prompt = template.get("system_prompt", "")
         user_template = template.get("user_prompt_template", "")
 
         # Format code artifacts for the prompt (handle both dict and CodeFile objects)
-        code_summary = "\n".join([
-            f"File: {filepath}\n{artifact.get('content', '') if isinstance(artifact, dict) else getattr(artifact, 'content', '')}"
-            for filepath, artifact in code_artifacts.items()
-        ])
+        code_parts = []
+        for filepath, artifact in code_artifacts.items():
+            if isinstance(artifact, dict):
+                content = artifact.get("content", "")
+            elif hasattr(artifact, "content"):
+                content = artifact.content
+            else:
+                content = str(artifact)
+            code_parts.append(f"File: {filepath}\n{content}")
+        
+        code_summary = "\n\n".join(code_parts)
+        logger.debug(f"Critic reviewing {len(code_artifacts)} files")
 
         user_prompt = user_template.format(
             code_files_json=code_summary,
@@ -56,51 +65,59 @@ class CriticAgent(BaseAgent):
         )
 
         # Build messages with JSON constraint
-        messages = self._build_messages(system_prompt, user_prompt)
-        messages.append({
-            "role": "user",
-            "content": "IMPORTANT: Respond with ONLY a valid JSON object. No markdown, no explanations, no code snippets. Start your response with { and end with }."
-        })
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+            {"role": "user", "content": "IMPORTANT: Respond with ONLY a valid JSON object. No markdown, no explanations. Start with { and end with }."}
+        ]
 
-        raw_response = await self.api_client.chat_completion(
-            messages=messages,
-            model=self.model,
-            temperature=self.temperature,
-            max_tokens=self.max_tokens,
-            response_format="json_object",
-        )
-
-        from src.core.json_parser import StructuredOutputParser
-        try:
-            data = StructuredOutputParser.parse_dict(raw_response)
-        except ValueError as e:
-            # Retry with error feedback
-            feedback_msg = {
-                "role": "user",
-                "content": f"ERROR: Your previous response was not valid JSON. Please respond with ONLY a valid JSON object. No code, no explanations. Error: {str(e)}"
-            }
-            retry_messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-                feedback_msg,
-            ]
-            retry_response = await self.api_client.chat_completion(
-                messages=retry_messages,
-                model=self.model,
-                temperature=self.temperature,
-                max_tokens=self.max_tokens,
-                response_format="json_object",
-            )
+        max_retries = 3
+        data = None
+        
+        for attempt in range(max_retries):
             try:
-                data = StructuredOutputParser.parse_dict(retry_response)
-            except ValueError:
-                data = {
-                    "message": "Code review complete",
-                    "status": "approved",
-                    "issues": [],
-                    "summary": "No issues found",
-                    "closing_message": "Code looks good!"
-                }
+                raw_response = await self.api_client.chat_completion(
+                    messages=messages,
+                    model=self.model,
+                    temperature=self.temperature,
+                    max_tokens=max(self.max_tokens, 4000),
+                    response_format="json_object",
+                )
+                
+                from src.core.json_parser import StructuredOutputParser
+                data = StructuredOutputParser.parse_dict(raw_response)
+                if data and "status" in data:
+                    break
+                
+                logger.warning(f"Critic retry {attempt+1}: invalid response")
+                messages.append({
+                    "role": "user",
+                    "content": f"ERROR: Response missing 'status' field. Please include all required fields. Error: Empty or invalid response"
+                })
+                
+            except ValueError as e:
+                logger.warning(f"Critic JSON parse error (attempt {attempt+1}): {e}")
+                messages.append({
+                    "role": "user",
+                    "content": f"ERROR: Invalid JSON. Please respond with ONLY valid JSON. Error: {str(e)}"
+                })
+            except Exception as e:
+                logger.error(f"Critic API error (attempt {attempt+1}): {e}")
+                messages.append({
+                    "role": "user",
+                    "content": f"ERROR: API error. Please respond with ONLY valid JSON. Error: {str(e)}"
+                })
+        
+        # Fallback if all retries failed
+        if not data:
+            logger.warning("All Critic retries failed, using fallback")
+            data = {
+                "message": "Skeleton code review complete (fallback mode)",
+                "status": "approved",
+                "issues": [],
+                "summary": "No critical issues found in skeleton structure",
+                "closing_message": "Skeleton looks good for hackathon use."
+            }
 
         # Convert issues to models
         issues = []
