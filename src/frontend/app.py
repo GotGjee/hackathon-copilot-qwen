@@ -26,7 +26,7 @@ AGENT_AVATARS = {
 }
 
 
-def api_request(method: str, endpoint: str, data: dict = None):
+def api_request(method: str, endpoint: str, data: dict | None = None):
     """Make API request with error handling."""
     try:
         url = f"{API_BASE_URL}{endpoint}"
@@ -182,22 +182,56 @@ def show_session_flow():
     # Chat container
     st.subheader("💬 Team Chat")
     
-    for msg in st.session_state.stream_messages:
-        render_chat_bubble(msg)
+    # Track dialogue state for auto-detection
+    # Dialogue pairs: Max<->Sarah, Kai<->Rex, Nova variants
+    dialogue_pairs = {
+        "Max": "Sarah",
+        "Sarah": "Max", 
+        "Kai": "Rex",
+        "Rex": "Kai",
+        "Nova (Slides)": "Nova",
+        "Nova (Script)": "Nova (Slides)",
+    }
+    prev_agent_name = None
+    
+    for i, msg in enumerate(st.session_state.stream_messages):
+        agent_name = msg.get("agent_name", "System")
+        event_type = msg.get("event_type", "message")
+        
+        # Detect dialogue: consecutive messages between dialogue pairs
+        expected_reply = dialogue_pairs.get(agent_name)
+        is_dialogue = (
+            event_type == "message" and 
+            expected_reply is not None and
+            prev_agent_name == expected_reply
+        )
+        
+        # Determine who this message is replying to
+        reply_to = prev_agent_name if is_dialogue else None
+        
+        render_chat_bubble(msg, is_dialogue=is_dialogue, reply_to=reply_to)
+        prev_agent_name = agent_name
     
     # Show agent_log messages (avoid duplicates)
     if state.get("agent_log"):
         shown_messages = {m.get("message", "") for m in st.session_state.stream_messages}
         for msg in state["agent_log"]:
             if msg.get("message", "") not in shown_messages:
+                agent_name = msg.get("agent_name", "System")
+                # Check if this is part of a dialogue
+                expected_reply = dialogue_pairs.get(agent_name)
+                is_dialogue = expected_reply is not None and prev_agent_name == expected_reply
+                reply_to = prev_agent_name if is_dialogue else None
+                
                 render_chat_bubble({
                     "event_type": "message",
                     "agent": msg.get("agent", "system"),
-                    "agent_name": msg.get("agent_name", "System"),
+                    "agent_name": agent_name,
                     "emoji": msg.get("emoji", "🤖"),
                     "role": msg.get("role", ""),
                     "message": msg.get("message", ""),
-                })
+                }, is_dialogue=is_dialogue, reply_to=reply_to)
+                prev_agent_name = agent_name
 
     # Phase-specific UI
     if current_layer == "hitl_1" and not state.get("selected_idea"):
@@ -222,14 +256,38 @@ def show_session_flow():
         st.rerun()
 
 
-def render_chat_bubble(msg: dict):
-    """Render a chat bubble message."""
+def render_chat_bubble(msg: dict, is_dialogue: bool = False, reply_to: str | None = None):
+    """Render a chat bubble message with dialogue support.
+    
+    Args:
+        msg: Message data dict
+        is_dialogue: Whether this is part of a conversation thread
+        reply_to: Name of agent this message is replying to (optional)
+    """
     event_type = msg.get("event_type", "message")
     emoji = msg.get("emoji", "")
     agent_name = msg.get("agent_name", "System")
     role = msg.get("role", "")
     message = msg.get("message", "")
     avatar = AGENT_AVATARS.get(agent_name, {"icon": "🤖", "color": "#95A5A6"})
+    
+    # Build reply indicator if replying to someone
+    reply_html = ""
+    if reply_to:
+        reply_avatar = AGENT_AVATARS.get(reply_to, {"icon": "🤖", "color": "#95A5A6"})
+        reply_html = f"""
+            <div style="margin-left: 46px; margin-bottom: 4px; padding: 6px 12px; 
+                        background: #e8e8e8; border-left: 3px solid {reply_avatar['color']};
+                        border-radius: 6px; font-size: 0.85em; color: #666;">
+                ↩️ ตอบกลับ <strong style="color: {reply_avatar['color']};">{reply_to}</strong>
+            </div>
+        """
+    
+    # Dialogue indicator for conversation threads
+    dialogue_badge = ""
+    if is_dialogue:
+        dialogue_badge = """<span style="font-size: 0.7em; background: #FFD93D; color: #333; 
+                           padding: 2px 8px; border-radius: 10px; margin-left: 8px;">💬 dialogue</span>"""
     
     if event_type == "thinking":
         st.info(f"{emoji} **{agent_name}** *({role})* is thinking...\n\n{message}")
@@ -242,19 +300,24 @@ def render_chat_bubble(msg: dict):
     elif event_type == "message":
         st.markdown(
             f"""
-            <div style="margin-bottom: 8px; display: flex; align-items: flex-start; gap: 10px;">
-                <div style="width: 36px; height: 36px; border-radius: 50%; background: {avatar['color']}; 
-                            display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 18px;">
-                    {avatar['icon']}
-                </div>
-                <div style="flex: 1;">
-                    <div style="margin-bottom: 2px;">
-                        <strong style="color: {avatar['color']};">{agent_name}</strong>
-                        <span style="color: #888; font-size: 0.85em; margin-left: 8px;">{role}</span>
+            <div style="margin-bottom: 12px;">
+                {reply_html}
+                <div style="display: flex; align-items: flex-start; gap: 10px; 
+                            {'margin-left: 20px;' if is_dialogue else ''}">
+                    <div style="width: 36px; height: 36px; border-radius: 50%; background: {avatar['color']}; 
+                                display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 18px;">
+                        {avatar['icon']}
                     </div>
-                    <div style="background: #f0f2f6; border-radius: 12px; padding: 12px 16px; 
-                                max-width: 85%; color: #333; line-height: 1.5;">
-                        {message}
+                    <div style="flex: 1;">
+                        <div style="margin-bottom: 2px;">
+                            <strong style="color: {avatar['color']};">{agent_name}</strong>
+                            <span style="color: #888; font-size: 0.85em; margin-left: 8px;">{role}</span>
+                            {dialogue_badge}
+                        </div>
+                        <div style="background: #f0f2f6; border-radius: 12px; padding: 12px 16px; 
+                                    max-width: 85%; color: #333; line-height: 1.5;">
+                            {message}
+                        </div>
                     </div>
                 </div>
             </div>

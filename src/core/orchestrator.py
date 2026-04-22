@@ -49,7 +49,7 @@ class Orchestrator:
         return target in self.transitions.get(state.current_layer, [])
 
     async def run_ideation(self, state: SessionState) -> SessionState:
-        """Layer 1, Phase 1: Generate project ideas."""
+        """Layer 1, Phase 1: Generate project ideas with dialogue."""
         from src.agents.ideator import IdeatorAgent
 
         state.transition_to(WorkflowLayer.IDEATION)
@@ -72,9 +72,11 @@ class Orchestrator:
             # Store ideas in state
             state.ideas = result.ideas
 
+            # Max presents ideas with personality
+            max_presentation = result.message
             await emit_agent_message(
                 state.session_id, "ideator", "Max", "🧠", "Creative Director",
-                result.message, "ideation", {"ideas_count": len(result.ideas)}
+                max_presentation, "ideation", {"ideas_count": len(result.ideas)}
             )
             
             state.add_agent_message(
@@ -82,12 +84,40 @@ class Orchestrator:
                 agent_name="Max",
                 emoji="🧠",
                 role="Creative Director",
-                message=result.message,
+                message=max_presentation,
             )
 
-            # Move to judging
+            # Show each idea from Max's perspective
+            for idea in state.ideas:
+                max_idea_msg = f"💡 **ความคิดที่ {idea.id}: {idea.title}**\n\n{idea.description}\n\n🛠️ Tech Stack: {', '.join(idea.tech_stack)}\n👥 สำหรับ: {idea.target_users}\n⭐ คะแนน innovation: {idea.innovation_score}/10"
+                await emit_agent_message(
+                    state.session_id, "ideator", "Max", "🧠", "Creative Director",
+                    max_idea_msg, "ideation"
+                )
+                state.add_agent_message(
+                    agent="ideator",
+                    agent_name="Max",
+                    emoji="🧠",
+                    role="Creative Director",
+                    message=max_idea_msg,
+                )
+
+            # Max's closing
+            await emit_agent_message(
+                state.session_id, "ideator", "Max", "🧠", "Creative Director",
+                result.closing_message, "ideation"
+            )
+            state.add_agent_message(
+                agent="ideator",
+                agent_name="Max",
+                emoji="🧠",
+                role="Creative Director",
+                message=result.closing_message,
+            )
+
+            # Move to judging (with dialogue)
             state.transition_to(WorkflowLayer.JUDGING)
-            return await self.run_judging(state)
+            return await self.run_judging_with_dialogue(state)
 
         except Exception as e:
             logger.error(f"Ideation failed for session {state.session_id}: {e}")
@@ -100,6 +130,127 @@ class Orchestrator:
                 message=f"Ideation failed: {str(e)}",
             )
             raise
+
+    async def run_judging_with_dialogue(self, state: SessionState) -> SessionState:
+        """Layer 1, Phase 2: Evaluate and score ideas with dialogue between Max and Sarah."""
+        from src.agents.judge import JudgeAgent
+
+        logger.info(f"Starting judging with dialogue for session {state.session_id}")
+        
+        # Phase start
+        await emit_phase_start(state.session_id, "judging", "⚖️ Sarah is evaluating ideas...")
+        
+        # Step 1: Sarah thinking
+        await emit_agent_thinking(
+            state.session_id, "judge", "Sarah", "⚖️", "Pragmatic Lead",
+            "Analyzing feasibility and scoring each idea...", "judging"
+        )
+
+        # Step 2: Sarah evaluates
+        agent = JudgeAgent(self.api_client)
+        result = await agent.evaluate_ideas(
+            ideas=state.ideas,
+            constraints=state.constraints,
+        )
+
+        # Store evaluations
+        state.evaluations = result.evaluations
+
+        # Step 3: Sarah presents her evaluation with dialogue
+        sarah_opening = result.message
+        await emit_agent_message(
+            state.session_id, "judge", "Sarah", "⚖️", "Pragmatic Lead",
+            sarah_opening, "judging"
+        )
+        state.add_agent_message(
+            agent="judge",
+            agent_name="Sarah",
+            emoji="⚖️",
+            role="Pragmatic Lead",
+            message=sarah_opening,
+        )
+
+        # Step 4: Sarah critiques each idea
+        for evaluation in state.evaluations:
+            critique_msg = f"📊 **วิจารณ์ของ Sarah สำหรับ: {evaluation.idea_title}**\n\n"
+            critique_msg += f"✅ **จุดแข็ง:**\n"
+            for s in evaluation.strengths:
+                critique_msg += f"• {s}\n"
+            critique_msg += f"\n⚠️ **ความเสี่ยง:**\n"
+            for r in evaluation.risks:
+                critique_msg += f"• {r}\n"
+            critique_msg += f"\n📈 **คะแนนรวม:** {evaluation.total_score}/10\n"
+            critique_msg += f"💬 **คำแนะนำ:** {evaluation.recommendation}"
+            
+            await emit_agent_message(
+                state.session_id, "judge", "Sarah", "⚖️", "Pragmatic Lead",
+                critique_msg, "judging"
+            )
+            state.add_agent_message(
+                agent="judge",
+                agent_name="Sarah",
+                emoji="⚖️",
+                role="Pragmatic Lead",
+                message=critique_msg,
+            )
+
+        # Step 5: Sarah's ranking
+        ranking_msg = f"🏆 **การจัดอันดับของ Sarah:**\n"
+        for i, idea_id in enumerate(result.ranking, 1):
+            idea = next((idea for idea in state.ideas if idea.id == idea_id), None)
+            if idea:
+                ranking_msg += f"{i}. {idea.title}\n"
+        
+        await emit_agent_message(
+            state.session_id, "judge", "Sarah", "⚖️", "Pragmatic Lead",
+            ranking_msg, "judging"
+        )
+        state.add_agent_message(
+            agent="judge",
+            agent_name="Sarah",
+            emoji="⚖️",
+            role="Pragmatic Lead",
+            message=ranking_msg,
+        )
+
+        # Step 6: Max responds to Sarah's critique
+        await emit_agent_thinking(
+            state.session_id, "ideator", "Max", "🧠", "Creative Director",
+            "Responding to Sarah's evaluation...", "judging"
+        )
+        
+        max_response = f"💬 **Max ตอบกลับ Sarah:**\n\n"
+        max_response += f"Sarah วิเคราะห์ได้เฉียบขาดมาก! ผมเห็นด้วยกับประเด็นเรื่องความเสี่ยง\n\n"
+        
+        # Add Max's defense for top idea
+        top_idea_id = result.ranking[0] if result.ranking else None
+        if top_idea_id:
+            top_idea = next((idea for idea in state.ideas if idea.id == top_idea_id), None)
+            if top_idea:
+                max_response += f"สำหรับ **{top_idea.title}** ผมคิดว่าเราสามารถจัดการความเสี่ยงได้โดย:\n"
+                max_response += f"• ใช้ MVP scope ที่เล็กที่สุด\n"
+                max_response += f"• โฟกัสที่ core feature ก่อน\n\n"
+        
+        max_response += f"ขอให้ทีมช่วยพิจารณาไอเดียที่ Sarah แนะนำเป็นอันดับแรกนะครับ!"
+        
+        await emit_agent_message(
+            state.session_id, "ideator", "Max", "🧠", "Creative Director",
+            max_response, "judging"
+        )
+        state.add_agent_message(
+            agent="ideator",
+            agent_name="Max",
+            emoji="🧠",
+            role="Creative Director",
+            message=max_response,
+        )
+
+        await emit_phase_complete(state.session_id, "judging")
+
+        # Pause for human selection (HITL 1)
+        state.pause_for_hitl("Please review the scored ideas and select one to proceed.")
+        state.transition_to(WorkflowLayer.HITL_1)
+        return state
 
     async def run_judging(self, state: SessionState) -> SessionState:
         """Layer 1, Phase 2: Evaluate and score ideas."""
@@ -301,13 +452,15 @@ class Orchestrator:
         return await self.run_critiquing(state)
 
     async def run_critiquing(self, state: SessionState) -> SessionState:
-        """Layer 2, Phase 4: Review code with Critic agent."""
+        """Layer 2, Phase 4: Review code with Critic agent and dialogue."""
         from src.agents.critic import CriticAgent
 
         state.transition_to(WorkflowLayer.CRITIQUING)
         logger.info(f"Starting code review for session {state.session_id}")
         
         await emit_phase_start(state.session_id, "critiquing", "🔍 Rex is reviewing the code...")
+        
+        # Rex thinking
         await emit_agent_thinking(
             state.session_id, "critic", "Rex", "🔍", "QA Lead",
             "Analyzing code quality, security, and best practices...", "critiquing"
@@ -322,34 +475,99 @@ class Orchestrator:
         state.critic_report = result.model_dump(mode='json') if hasattr(result, 'model_dump') else result
 
         if result.status == "approved":
+            # Rex presents approval with details
+            rex_msg = f"✅ **Rex: Code Review Approved!**\n\n"
+            rex_msg += f"โค้ดผ่านการตรวจสอบแล้ว! ไม่มีปัญหาสำคัญ\n"
+            rex_msg += f"\n📊 **คะแนนคุณภาพ:** ผ่านมาตรฐาน"
+            if result.issues:
+                rex_msg += f"\n\n💡 **ข้อเสนอแนะเพิ่มเติม:**\n"
+                for issue in result.issues[:3]:
+                    rex_msg += f"• {issue}\n"
+            
             await emit_agent_message(
                 state.session_id, "critic", "Rex", "🔍", "QA Lead",
-                "Code approved! No issues found.", "critiquing"
+                rex_msg, "critiquing"
             )
-            await emit_phase_complete(state.session_id, "critiquing")
-            
             state.add_agent_message(
                 agent="critic",
                 agent_name="Rex",
                 emoji="🔍",
                 role="QA Lead",
-                message="Code approved! No issues found.",
+                message=rex_msg,
             )
+
+            # Kai responds to approval
+            await emit_agent_thinking(
+                state.session_id, "builder", "Kai", "🔨", "Senior Developer",
+                "Responding to Rex's review...", "critiquing"
+            )
+            
+            kai_response = f"💬 **Kai ตอบกลับ Rex:**\n\n"
+            kai_response += f"ขอบคุณที่ตรวจสอบครับ Rex! ผมดีใจที่โค้ดผ่าน QA\n"
+            kai_response += f"ผมเขียนโค้ดโดยคำนึงถึง best practices และ clean code\n"
+            kai_response += f"ถ้ามีข้อเสนอแนะเพิ่มเติม ผมพร้อมนำไปปรับปรุงครับ!"
+            
+            await emit_agent_message(
+                state.session_id, "builder", "Kai", "🔨", "Senior Developer",
+                kai_response, "critiquing"
+            )
+            state.add_agent_message(
+                agent="builder",
+                agent_name="Kai",
+                emoji="🔨",
+                role="Senior Developer",
+                message=kai_response,
+            )
+
+            await emit_phase_complete(state.session_id, "critiquing")
+            
             # Move to HITL 2 for human review
             state.pause_for_hitl("Code review passed. Please review the generated code.")
             state.transition_to(WorkflowLayer.HITL_2)
         else:
+            # Rex presents issues with details
+            rex_msg = f"❌ **Rex: พบปัญหา {len(result.issues)} จุด**\n\n"
+            rex_msg += f"🔴 **ปัญหาที่พบ:**\n"
+            for i, issue in enumerate(result.issues[:5], 1):
+                rex_msg += f"{i}. {issue}\n"
+            rex_msg += f"\n⚠️ ผมแนะนำให้กลับไปแก้ไขโค้ดครับ Kai"
+            
             await emit_agent_message(
                 state.session_id, "critic", "Rex", "🔍", "QA Lead",
-                f"Found {len(result.issues)} issues. Triggering refinement...", "critiquing"
+                rex_msg, "critiquing"
             )
-            
             state.add_agent_message(
                 agent="critic",
                 agent_name="Rex",
                 emoji="🔍",
                 role="QA Lead",
-                message=f"Found {len(result.issues)} issues. Triggering refinement...",
+                message=rex_msg,
+            )
+
+            # Kai responds to criticism
+            await emit_agent_thinking(
+                state.session_id, "builder", "Kai", "🔨", "Senior Developer",
+                "Responding to Rex's critique...", "critiquing"
+            )
+            
+            kai_response = f"💬 **Kai ตอบกลับ Rex:**\n\n"
+            kai_response += f"รับทราบครับ Rex! ขอบคุณที่ชี้มา ผมจะกลับไปแก้ไขประเด็นที่พบ\n"
+            if result.issues:
+                kai_response += f"\nผมจะจัดการปัญหาเหล่านี้:\n"
+                for issue in result.issues[:3]:
+                    kai_response += f"• {issue}\n"
+            kai_response += f"\nผมจะรีบแก้ไขและส่งให้ตรวจสอบอีกครั้งครับ!"
+            
+            await emit_agent_message(
+                state.session_id, "builder", "Kai", "🔨", "Senior Developer",
+                kai_response, "critiquing"
+            )
+            state.add_agent_message(
+                agent="builder",
+                agent_name="Kai",
+                emoji="🔨",
+                role="Senior Developer",
+                message=kai_response,
             )
 
             # Check refinement limit
@@ -402,7 +620,7 @@ class Orchestrator:
         return await self.run_pitching(state)
 
     async def run_pitching(self, state: SessionState) -> SessionState:
-        """Layer 3: Generate pitch materials."""
+        """Layer 3: Generate pitch materials with dialogue."""
         from src.agents.pitch_strategist import PitchStrategistAgent
         from src.agents.slide_agent import SlideAgent
         from src.agents.script_agent import ScriptAgent
@@ -414,7 +632,7 @@ class Orchestrator:
 
         selected = state.selected_idea
 
-        # Generate narrative
+        # Step 1: Nova (Storyteller) creates narrative
         await emit_agent_thinking(
             state.session_id, "pitch_strategist", "Nova", "🎤", "Storyteller",
             "Crafting the perfect narrative for your project...", "pitching"
@@ -428,23 +646,28 @@ class Orchestrator:
         )
         state.narrative = narrative_result
 
+        # Nova presents narrative
+        nova_narrative_msg = f"🎤 **Nova (Storyteller): สร้างเรื่องเล่าเรียบร้อยแล้ว!**\n\n"
+        nova_narrative_msg += f"ผมได้ออกแบบ story สำหรับโปรเจกต์ **{selected.title if selected else 'N/A'}**\n"
+        nova_narrative_msg += f"โดยเน้นสร้าง emotional impact และ clear value proposition\n"
+        nova_narrative_msg += f"พร้อมส่งต่อให้ทีมทำ slides แล้วครับ!"
+        
         await emit_agent_message(
             state.session_id, "pitch_strategist", "Nova", "🎤", "Storyteller",
-            "Narrative created!", "pitching"
+            nova_narrative_msg, "pitching"
         )
-
         state.add_agent_message(
             agent="pitch_strategist",
             agent_name="Nova",
             emoji="🎤",
             role="Storyteller",
-            message="Narrative created!",
+            message=nova_narrative_msg,
         )
 
-        # Generate slides
+        # Step 2: Nova (Slides) responds to Nova (Storyteller)
         await emit_agent_thinking(
             state.session_id, "slide_agent", "Nova (Slides)", "📊", "Presentation Designer",
-            "Designing the slide deck layout...", "pitching"
+            "Designing the slide deck layout based on Nova's narrative...", "pitching"
         )
         slide_agent = SlideAgent(self.api_client)
         slides_result = await slide_agent.create_slides(
@@ -453,23 +676,28 @@ class Orchestrator:
         )
         state.slides = slides_result
 
+        # Slides Nova responds to Storyteller Nova
+        slides_nova_msg = f"💬 **Nova (Slides) ตอบกลับ Nova (Storyteller):**\n\n"
+        slides_nova_msg += f"เรื่องเล่าเยี่ยมมากครับ! ผมออกแบบ slide deck ให้แล้ว {len(slides_result.slides) if hasattr(slides_result, 'slides') else 'N/A'} slides\n"
+        slides_nova_msg += f"แต่ละ slide ถูกจัด layout ให้สวยงามและสื่อสารได้ชัดเจน\n"
+        slides_nova_msg += f"พร้อมส่งต่อให้ Speech Writer แล้วครับ!"
+        
         await emit_agent_message(
             state.session_id, "slide_agent", "Nova (Slides)", "📊", "Presentation Designer",
-            "Slide deck outline ready!", "pitching"
+            slides_nova_msg, "pitching"
         )
-
         state.add_agent_message(
             agent="slide_agent",
             agent_name="Nova (Slides)",
             emoji="📊",
             role="Presentation Designer",
-            message="Slide deck outline ready!",
+            message=slides_nova_msg,
         )
 
-        # Generate script
+        # Step 3: Nova (Script) responds to both
         await emit_agent_thinking(
             state.session_id, "script_agent", "Nova (Script)", "🎙️", "Speech Writer",
-            "Writing the speaker script...", "pitching"
+            "Writing the speaker script based on slides and narrative...", "pitching"
         )
         script_agent = ScriptAgent(self.api_client)
         script_result = await script_agent.create_script(
@@ -479,19 +707,44 @@ class Orchestrator:
         )
         state.script = script_result
 
+        # Script Nova responds
+        script_nova_msg = f"💬 **Nova (Script) ตอบกลับทีม:**\n\n"
+        script_nova_msg += f"ได้รับ slides และ narrative แล้วครับ! ผมเขียน speaker script ให้แล้ว {len(script_result.sections) if hasattr(script_result, 'sections') else 'N/A'} sections\n"
+        script_nova_msg += f"script ถูกออกแบบให้กระชับ น่าสนใจ และ fit กับเวลา pitch\n"
+        script_nova_msg += f"**ทีม Nova พร้อมแล้วครับ! ขอให้ pitch ออกมาดีที่สุด!** 🎤"
+        
         await emit_agent_message(
             state.session_id, "script_agent", "Nova (Script)", "🎙️", "Speech Writer",
-            "Speaker script complete!", "pitching"
+            script_nova_msg, "pitching"
         )
-        await emit_phase_complete(state.session_id, "pitching")
-
         state.add_agent_message(
             agent="script_agent",
             agent_name="Nova (Script)",
             emoji="🎙️",
             role="Speech Writer",
-            message="Speaker script complete!",
+            message=script_nova_msg,
         )
+
+        # Final: All Nova wrap up
+        wrapup_msg = f"🎉 **ทีม Nova เสร็จสมบูรณ์!**\n\n"
+        wrapup_msg += f"✅ Storyteller: สร้าง narrative\n"
+        wrapup_msg += f"✅ Presentation Designer: ออกแบบ slides\n"
+        wrapup_msg += f"✅ Speech Writer: เขียน script\n\n"
+        wrapup_msg += f"พร้อม pitch แล้ว! ลุยเลยทีม! 🚀"
+        
+        await emit_agent_message(
+            state.session_id, "pitch_strategist", "Nova", "🎤", "Storyteller",
+            wrapup_msg, "pitching"
+        )
+        state.add_agent_message(
+            agent="pitch_strategist",
+            agent_name="Nova",
+            emoji="🎤",
+            role="Storyteller",
+            message=wrapup_msg,
+        )
+
+        await emit_phase_complete(state.session_id, "pitching")
 
         state.transition_to(WorkflowLayer.COMPLETE)
         return state
