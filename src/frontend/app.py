@@ -59,6 +59,7 @@ def main():
             .main .block-container { padding-top: 1rem; }
             #MainMenu {visibility: hidden;}
             footer {visibility: hidden;}
+            iframe {{ border: none; }}
         </style>
     """, unsafe_allow_html=True)
 
@@ -270,24 +271,7 @@ def render_chat_bubble(msg: dict, is_dialogue: bool = False, reply_to: str | Non
     role = msg.get("role", "")
     message = msg.get("message", "")
     avatar = AGENT_AVATARS.get(agent_name, {"icon": "🤖", "color": "#95A5A6"})
-    
-    # Build reply indicator if replying to someone
-    reply_html = ""
-    if reply_to:
-        reply_avatar = AGENT_AVATARS.get(reply_to, {"icon": "🤖", "color": "#95A5A6"})
-        reply_html = f"""
-            <div style="margin-left: 46px; margin-bottom: 4px; padding: 6px 12px; 
-                        background: #e8e8e8; border-left: 3px solid {reply_avatar['color']};
-                        border-radius: 6px; font-size: 0.85em; color: #666;">
-                ↩️ ตอบกลับ <strong style="color: {reply_avatar['color']};">{reply_to}</strong>
-            </div>
-        """
-    
-    # Dialogue indicator for conversation threads
-    dialogue_badge = ""
-    if is_dialogue:
-        dialogue_badge = """<span style="font-size: 0.7em; background: #FFD93D; color: #333; 
-                           padding: 2px 8px; border-radius: 10px; margin-left: 8px;">💬 dialogue</span>"""
+    avatar_color = avatar.get("color", "#95A5A6")
     
     if event_type == "thinking":
         st.info(f"{emoji} **{agent_name}** *({role})* is thinking...\n\n{message}")
@@ -298,30 +282,23 @@ def render_chat_bubble(msg: dict, is_dialogue: bool = False, reply_to: str | Non
     elif event_type == "error":
         st.error(f"{emoji} **{agent_name}**: {message}")
     elif event_type == "message":
+        # Build header line
+        dialogue_badge = " 💬 *dialogue*" if is_dialogue else ""
+        header = f"🟢 **{agent_name}**" if not is_dialogue else f"💬 **{agent_name}**"
+        header += f" *({role})*{dialogue_badge}"
+        
+        # Show reply indicator
+        if reply_to:
+            reply_avatar = AGENT_AVATARS.get(reply_to, {"icon": "🤖", "color": "#95A5A6"})
+            reply_color = reply_avatar.get("color", "#95A5A6")
+            st.markdown(
+                f"<sub style='color:#666;'>↩️ ตอบกลับ <span style='color:{reply_color};'>{reply_to}</span></sub>",
+                unsafe_allow_html=True
+            )
+        
+        # Render message with colored name
         st.markdown(
-            f"""
-            <div style="margin-bottom: 12px;">
-                {reply_html}
-                <div style="display: flex; align-items: flex-start; gap: 10px; 
-                            {'margin-left: 20px;' if is_dialogue else ''}">
-                    <div style="width: 36px; height: 36px; border-radius: 50%; background: {avatar['color']}; 
-                                display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 18px;">
-                        {avatar['icon']}
-                    </div>
-                    <div style="flex: 1;">
-                        <div style="margin-bottom: 2px;">
-                            <strong style="color: {avatar['color']};">{agent_name}</strong>
-                            <span style="color: #888; font-size: 0.85em; margin-left: 8px;">{role}</span>
-                            {dialogue_badge}
-                        </div>
-                        <div style="background: #f0f2f6; border-radius: 12px; padding: 12px 16px; 
-                                    max-width: 85%; color: #333; line-height: 1.5;">
-                            {message}
-                        </div>
-                    </div>
-                </div>
-            </div>
-            """,
+            f"{header}\n\n{message}",
             unsafe_allow_html=True
         )
 
