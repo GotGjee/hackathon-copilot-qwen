@@ -108,6 +108,8 @@ class SessionService:
     async def _run_development_background(self, session_id: str, state: SessionState):
         """Run the full development workflow in background."""
         try:
+            # Run planning → architecting → building → critiquing → HITL_2
+            # Each phase auto-saves and chains to the next in orchestrator
             result = await self.orchestrator.run_planning(state)
             self.save_session(session_id)
         except Exception as e:
@@ -116,12 +118,28 @@ class SessionService:
             raise
 
     async def approve_code(self, session_id: str, feedback: Optional[str] = None) -> SessionState:
-        """Handle code approval at HITL 2."""
+        """Handle code approval at HITL 2 - runs pitching in background."""
         state = self.get_session(session_id)
         if not state:
             raise ValueError(f"Session {session_id} not found")
 
-        return await self.orchestrator.handle_code_review(state, approved=True, feedback=feedback)
+        # Run pitching in background so API returns immediately
+        state.resume()
+        self.save_session(session_id)
+        asyncio.create_task(self._run_pitching_background(session_id, state))
+        return state
+    
+    async def _run_pitching_background(self, session_id: str, state: SessionState):
+        """Run pitching workflow in background."""
+        try:
+            result = await self.orchestrator.run_pitching(state)
+            from src.core.orchestrator import _save_state
+            _save_state(result)
+            self.save_session(session_id)
+        except Exception as e:
+            state.set_error(f"Pitching failed: {str(e)}")
+            self.save_session(session_id)
+            raise
 
     async def request_changes(self, session_id: str, feedback: str) -> SessionState:
         """Handle code change request at HITL 2."""
@@ -129,7 +147,42 @@ class SessionService:
         if not state:
             raise ValueError(f"Session {session_id} not found")
 
-        return await self.orchestrator.handle_code_review(state, approved=False, feedback=feedback)
+        # Loop back to building with feedback
+        state.refinement_count += 1
+        if state.refinement_count >= state.max_refinements:
+            state.add_agent_message(
+                agent="system",
+                agent_name="System",
+                emoji="⚠️",
+                role="System",
+                message="Max refinements reached. Please approve to continue.",
+            )
+            state.resume()
+            self.save_session(session_id)
+            return await self.orchestrator.handle_code_review(state, approved=True, feedback=feedback)
+        else:
+            state.add_agent_message(
+                agent="system",
+                agent_name="System",
+                emoji="🔄",
+                role="System",
+                message=f"Refinement cycle {state.refinement_count}/{state.max_refinements}. Rebuilding...",
+            )
+            state.resume()
+            self.save_session(session_id)
+            # Run building again in background
+            asyncio.create_task(self._run_rebuild_background(session_id, state))
+            return state
+    
+    async def _run_rebuild_background(self, session_id: str, state: SessionState):
+        """Run rebuilding in background."""
+        try:
+            result = await self.orchestrator.run_building(state)
+            self.save_session(session_id)
+        except Exception as e:
+            state.set_error(f"Rebuilding failed: {str(e)}")
+            self.save_session(session_id)
+            raise
 
     def save_session(self, session_id: str) -> bool:
         """Save current session state."""

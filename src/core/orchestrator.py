@@ -18,6 +18,16 @@ from src.core.events import (
 )
 
 
+def _save_state(state: SessionState):
+    """Save state to disk after each phase."""
+    try:
+        from src.services.state_manager import StateManager
+        sm = StateManager()
+        sm.save(state.session_id, state.to_dict())
+    except Exception as e:
+        logger.warning(f"Failed to save state: {e}")
+
+
 class Orchestrator:
     """
     Central orchestrator for the hackathon workflow.
@@ -117,6 +127,7 @@ class Orchestrator:
 
             # Move to judging (with dialogue)
             state.transition_to(WorkflowLayer.JUDGING)
+            _save_state(state)
             return await self.run_judging_with_dialogue(state)
 
         except Exception as e:
@@ -250,6 +261,7 @@ class Orchestrator:
         # Pause for human selection (HITL 1)
         state.pause_for_hitl("Please review the scored ideas and select one to proceed.")
         state.transition_to(WorkflowLayer.HITL_1)
+        _save_state(state)
         return state
 
     async def run_judging(self, state: SessionState) -> SessionState:
@@ -390,6 +402,7 @@ class Orchestrator:
         )
 
         await emit_phase_complete(state.session_id, "planning")
+        _save_state(state)
 
         return await self.run_architecting(state)
 
@@ -426,10 +439,13 @@ class Orchestrator:
         luna_msg += f"📁 **โครงสร้างโปรเจกต์:**\n"
         for f in list(result.file_structure.keys())[:10]:
             luna_msg += f"  {f}\n"
-        luna_msg += f"\n🏛️ **รูปแบบ:** {result.design_pattern}"
-        luna_msg += f"\n📊 **Database:** {result.database_schema}"
+        luna_msg += f"\n🏛️ **Design Decisions:**\n"
+        for d in result.design_decisions[:3]:
+            luna_msg += f"• {d}\n"
         luna_msg += f"\n🔌 **APIs:** {len(result.api_endpoints)} endpoints"
-        luna_msg += f"\n📦 **Dependencies:** {', '.join(result.dependencies[:5])}"
+        luna_msg += f"\n📦 **Tech Stack:** {', '.join([t.get('name', str(t)) for t in result.tech_stack[:5]])}"
+        if result.data_models:
+            luna_msg += f"\n📊 **Data Models:** {', '.join([m.get('name', str(m)) for m in result.data_models[:3]])}"
         luna_msg += f"\n\nพร้อมส่งต่อให้ Kai พัฒนาแล้วครับ!"
         
         await emit_agent_message(
@@ -468,6 +484,7 @@ class Orchestrator:
         )
 
         await emit_phase_complete(state.session_id, "architecting")
+        _save_state(state)
 
         return await self.run_building(state)
 
@@ -528,6 +545,7 @@ class Orchestrator:
         )
 
         await emit_phase_complete(state.session_id, "building")
+        _save_state(state)
 
         return await self.run_critiquing(state)
 
@@ -604,6 +622,7 @@ class Orchestrator:
             # Move to HITL 2 for human review
             state.pause_for_hitl("Code review passed. Please review the generated code.")
             state.transition_to(WorkflowLayer.HITL_2)
+            _save_state(state)
         else:
             # Rex presents issues with details
             rex_msg = f"❌ **Rex: พบปัญหา {len(result.issues)} จุด**\n\n"
@@ -697,7 +716,9 @@ class Orchestrator:
 
         state.user_feedback_2 = {"approved": approved, "feedback": feedback or ""}
         state.resume()
-        return await self.run_pitching(state)
+        result = await self.run_pitching(state)
+        _save_state(result)
+        return result
 
     async def run_pitching(self, state: SessionState) -> SessionState:
         """Layer 3: Generate pitch materials with dialogue."""
@@ -827,4 +848,5 @@ class Orchestrator:
         await emit_phase_complete(state.session_id, "pitching")
 
         state.transition_to(WorkflowLayer.COMPLETE)
+        _save_state(state)
         return state

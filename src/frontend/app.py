@@ -223,13 +223,19 @@ def main():
         st.session_state.eidx = 0
     if "started" not in st.session_state:
         st.session_state.started = False
+    if "export_code_path" not in st.session_state:
+        st.session_state.export_code_path = None
+    if "export_pitch_path" not in st.session_state:
+        st.session_state.export_pitch_path = None
 
     st.markdown(CSS, unsafe_allow_html=True)
 
     if not st.session_state.session_id:
         render_create()
+        st.stop()
     else:
         render_chat()
+        st.stop()
 
 
 def render_create():
@@ -351,6 +357,58 @@ def render_chat():
                 </div>
                 """, unsafe_allow_html=True)
 
+    # Export section (when complete)
+    if layer == "complete":
+        st.markdown("---")
+        st.markdown("### 📦 ดาวน์โหลดไฟล์")
+        st.caption("ดาวน์โหลดโค้ดและไฟล์พิตชิ่งสำหรับนำเสนอ")
+        
+        # Export code
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("📁 Export Code (ZIP)", type="primary", use_container_width=True):
+                with st.spinner("กำลังเตรียมไฟล์โค้ด..."):
+                    res = api("GET", f"/sessions/{sid}/export/code")
+                    if res:
+                        st.success(f"✅ สร้างไฟล์เรียบร้อย: `{res['filepath']}`")
+                        st.info("💡 ไฟล์ถูกบันทึกในโฟลเดอร์ `data/exports/`")
+                        # Store filepath for download
+                        st.session_state.export_code_path = res['filepath']
+                    else:
+                        st.error("❌ ไม่สามารถสร้างไฟล์ได้")
+        
+        with c2:
+            if st.button("📊 Export Pitch Materials (ZIP)", type="primary", use_container_width=True):
+                with st.spinner("กำลังเตรียมไฟล์พิตชิ่ง..."):
+                    res = api("GET", f"/sessions/{sid}/export/pitch")
+                    if res:
+                        st.success(f"✅ สร้างไฟล์เรียบร้อย: `{res['filepath']}`")
+                        st.info("💡 ไฟล์ถูกบันทึกในโฟลเดอร์ `data/exports/`")
+                        st.session_state.export_pitch_path = res['filepath']
+                    else:
+                        st.error("❌ ไม่สามารถสร้างไฟล์ได้")
+        
+        # Show download buttons if exports exist
+        if hasattr(st.session_state, 'export_code_path') and st.session_state.export_code_path:
+            with open(st.session_state.export_code_path, "rb") as f:
+                st.download_button(
+                    label="⬇️ ดาวน์โหลด Code ZIP",
+                    data=f,
+                    file_name=f"code_{sid}.zip",
+                    mime="application/zip",
+                    use_container_width=True,
+                )
+        
+        if hasattr(st.session_state, 'export_pitch_path') and st.session_state.export_pitch_path:
+            with open(st.session_state.export_pitch_path, "rb") as f:
+                st.download_button(
+                    label="⬇️ ดาวน์โหลด Pitch Materials ZIP",
+                    data=f,
+                    file_name=f"pitch_{sid}.zip",
+                    mime="application/zip",
+                    use_container_width=True,
+                )
+
     # Code review
     if layer == "hitl_2":
         st.markdown("### 🔍 ตรวจสอบโค้ด")
@@ -368,17 +426,78 @@ def render_chat():
 
     # Bottom bar
     st.markdown('<div style="display:flex;gap:8px;padding:8px 0">', unsafe_allow_html=True)
-    b1, b2 = st.columns([1, 1])
-    with b1:
+    has_code = state.get("code_artifacts") or layer in ["hitl_2", "pitching", "complete"]
+    has_pitch = state.get("narrative") or layer in ["pitching", "complete"]
+    btn_count = 3 if (has_code and has_pitch) else (2 if (has_code or has_pitch) else 1)
+    cols = st.columns([1, 1] + ([1] * btn_count))
+    idx = 0
+    with cols[idx]:
+        idx += 1
         if st.button("🆕 New Session", use_container_width=True):
             st.session_state.session_id = None
             st.session_state.msgs = []
             st.session_state.started = False
+            st.session_state.export_code_path = None
+            st.session_state.export_pitch_path = None
             st.rerun()
-    with b2:
+    with cols[idx]:
+        idx += 1
         if st.button("🔄 Refresh", use_container_width=True):
             st.rerun()
+    if has_code:
+        with cols[idx]:
+            idx += 1
+            if st.button("📁 Export Code", use_container_width=True):
+                with st.spinner("กำลังเตรียมไฟล์โค้ด..."):
+                    res = api("GET", f"/sessions/{sid}/export/code")
+                    if res:
+                        st.success(f"✅ สร้างไฟล์เรียบร้อย: `{res['filepath']}`")
+                        st.info("💡 ไฟล์ถูกบันทึกในโฟลเดอร์ `data/exports/`")
+                        st.session_state.export_code_path = res['filepath']
+                    else:
+                        st.error("❌ ไม่สามารถสร้างไฟล์ได้")
+    if has_pitch:
+        with cols[idx]:
+            idx += 1
+            if st.button("📊 Export Pitch", use_container_width=True):
+                with st.spinner("กำลังเตรียมไฟล์พิตชิ่ง..."):
+                    res = api("GET", f"/sessions/{sid}/export/pitch")
+                    if res:
+                        st.success(f"✅ สร้างไฟล์เรียบร้อย: `{res['filepath']}`")
+                        st.info("💡 ไฟล์ถูกบันทึกในโฟลเดอร์ `data/exports/`")
+                        st.session_state.export_pitch_path = res['filepath']
+                    else:
+                        st.error("❌ ไม่สามารถสร้างไฟล์ได้")
     st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Show download buttons if exports exist (always visible)
+    if hasattr(st.session_state, 'export_code_path') and st.session_state.export_code_path:
+        try:
+            with open(st.session_state.export_code_path, "rb") as f:
+                st.download_button(
+                    label="⬇️ ดาวน์โหลด Code ZIP",
+                    data=f,
+                    file_name=f"code_{sid}.zip",
+                    mime="application/zip",
+                    use_container_width=True,
+                    key="dl_code_btn",
+                )
+        except Exception:
+            st.session_state.export_code_path = None
+    
+    if hasattr(st.session_state, 'export_pitch_path') and st.session_state.export_pitch_path:
+        try:
+            with open(st.session_state.export_pitch_path, "rb") as f:
+                st.download_button(
+                    label="⬇️ ดาวน์โหลด Pitch Materials ZIP",
+                    data=f,
+                    file_name=f"pitch_{sid}.zip",
+                    mime="application/zip",
+                    use_container_width=True,
+                    key="dl_pitch_btn",
+                )
+        except Exception:
+            st.session_state.export_pitch_path = None
 
     # Auto-start
     if not state.get("is_paused") and not st.session_state.started:
@@ -392,7 +511,6 @@ def render_chat():
     st.session_state._prev_msg_count = curr_count
     
     if is_paused:
-        # Stop auto-refresh at HITL points to prevent flicker
         pass
     elif st.session_state.started:
         if curr_count > prev_count:

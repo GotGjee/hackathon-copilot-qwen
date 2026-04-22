@@ -32,7 +32,7 @@ class ExportService:
 
         Args:
             session_id: Session identifier
-            code_artifacts: Dictionary of filepath -> content
+            code_artifacts: Dictionary of filepath -> CodeFile model or dict
             title: Project title (used in filename)
 
         Returns:
@@ -56,9 +56,15 @@ Date: {datetime.now().isoformat()}
 
             zf.writestr("README.md", readme_content)
 
-            # Add code files
+            # Add code files - handle both CodeFile models and dicts
             for file_path, file_data in code_artifacts.items():
-                content = file_data.get("content", "") if isinstance(file_data, dict) else str(file_data)
+                if hasattr(file_data, 'content'):
+                    # It's a CodeFile model
+                    content = file_data.content
+                elif isinstance(file_data, dict):
+                    content = file_data.get("content", "")
+                else:
+                    content = str(file_data)
                 zf.writestr(file_path, content)
 
         return str(filepath)
@@ -74,6 +80,13 @@ Date: {datetime.now().isoformat()}
         """
         Create text files with pitch materials.
 
+        Args:
+            session_id: Session identifier
+            narrative: Narrative structure (dict or Pydantic model)
+            slides: List of slides (list of dicts or Pydantic models)
+            script: List of script sections (list of dicts or Pydantic models)
+            title: Project title
+
         Returns:
             Path to the created ZIP file
         """
@@ -82,19 +95,41 @@ Date: {datetime.now().isoformat()}
         filepath = self.export_dir / filename
 
         with zipfile.ZipFile(filepath, "w", zipfile.ZIP_DEFLATED) as zf:
-            # Narrative
+            # Narrative - handle model or dict
             if narrative:
-                narrative_text = self._format_narrative(narrative)
+                if hasattr(narrative, 'model_dump'):
+                    narrative_data = narrative.model_dump()
+                elif isinstance(narrative, dict):
+                    narrative_data = narrative
+                else:
+                    narrative_data = {"raw": str(narrative)}
+                narrative_text = self._format_narrative(narrative_data)
                 zf.writestr("01_narrative.txt", narrative_text)
 
-            # Slides
+            # Slides - handle models or dicts
             if slides:
-                slides_text = self._format_slides(slides)
+                slides_data = []
+                for s in slides:
+                    if hasattr(s, 'model_dump'):
+                        slides_data.append(s.model_dump())
+                    elif isinstance(s, dict):
+                        slides_data.append(s)
+                    else:
+                        slides_data.append({"raw": str(s)})
+                slides_text = self._format_slides(slides_data)
                 zf.writestr("02_slides_outline.txt", slides_text)
 
-            # Script
+            # Script - handle models or dicts
             if script:
-                script_text = self._format_script(script)
+                script_data = []
+                for s in script:
+                    if hasattr(s, 'model_dump'):
+                        script_data.append(s.model_dump())
+                    elif isinstance(s, dict):
+                        script_data.append(s)
+                    else:
+                        script_data.append({"raw": str(s)})
+                script_text = self._format_script(script_data)
                 zf.writestr("03_speaker_script.txt", script_text)
 
         return str(filepath)

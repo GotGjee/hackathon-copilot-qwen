@@ -264,9 +264,19 @@ async def export_code(session_id: str):
 
     try:
         title = state.selected_idea.title if state.selected_idea else "project"
+        # Convert CodeFile models to dicts for export
+        code_data = {}
+        for path, cf in state.code_artifacts.items():
+            if hasattr(cf, 'model_dump'):
+                code_data[path] = cf.model_dump()
+            elif hasattr(cf, 'content'):
+                code_data[path] = {"content": cf.content, "filepath": cf.filepath}
+            else:
+                code_data[path] = cf
+        
         filepath = export_service.export_code_zip(
             session_id=session_id,
-            code_artifacts=state.code_artifacts,
+            code_artifacts=code_data,
             title=title,
         )
         return {"filepath": filepath, "message": "Code exported successfully"}
@@ -290,11 +300,38 @@ async def export_pitch(session_id: str):
 
     try:
         title = state.selected_idea.title if state.selected_idea else "project"
+        # Handle narrative as model or dict
+        if hasattr(state.narrative, 'model_dump'):
+            narrative_data = state.narrative.model_dump()
+        elif isinstance(state.narrative, dict):
+            narrative_data = state.narrative
+        else:
+            narrative_data = {"raw": str(state.narrative)}
+        
+        # Handle slides and script - they might be models or dicts
+        slides_data = []
+        for s in state.slides:
+            if hasattr(s, 'model_dump'):
+                slides_data.append(s.model_dump())
+            elif isinstance(s, dict):
+                slides_data.append(s)
+            else:
+                slides_data.append({"raw": str(s)})
+        
+        script_data = []
+        for s in state.script:
+            if hasattr(s, 'model_dump'):
+                script_data.append(s.model_dump())
+            elif isinstance(s, dict):
+                script_data.append(s)
+            else:
+                script_data.append({"raw": str(s)})
+        
         filepath = export_service.export_pitch_materials(
             session_id=session_id,
-            narrative=state.narrative.model_dump() if state.narrative else {},
-            slides=[s.model_dump() for s in state.slides],
-            script=[s.model_dump() for s in state.script],
+            narrative=narrative_data,
+            slides=slides_data,
+            script=script_data,
             title=title,
         )
         return {"filepath": filepath, "message": "Pitch materials exported successfully"}
