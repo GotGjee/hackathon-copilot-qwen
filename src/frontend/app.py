@@ -1,28 +1,40 @@
 """
 Hackathon Copilot - Streamlit Frontend
-Chat-style UI with agent avatars and real-time event streaming.
+LINE/WhatsApp-style chat UI with Alibaba orange-white theme.
 """
 
 import streamlit as st
 import requests
 import time
 import os
+import base64
+from datetime import datetime
 
 # Configuration
 API_BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:8000")
 
-# Agent avatar config
-AGENT_AVATARS = {
-    "Max": {"icon": "🧠", "color": "#FF6B6B"},
-    "Sarah": {"icon": "⚖️", "color": "#4ECDC4"},
-    "Dave": {"icon": "📋", "color": "#45B7D1"},
-    "Luna": {"icon": "🏗️", "color": "#96CEB4"},
-    "Kai": {"icon": "🔨", "color": "#FFEAA7"},
-    "Rex": {"icon": "🔍", "color": "#DDA0DD"},
-    "Nova": {"icon": "🎤", "color": "#F8B500"},
-    "Nova (Slides)": {"icon": "📊", "color": "#9B59B6"},
-    "Nova (Script)": {"icon": "🎙️", "color": "#E74C3C"},
-    "System": {"icon": "🚀", "color": "#2ECC71"},
+# Agent config with Alibaba theme colors
+AGENTS = {
+    "Max": {"icon": "🧠", "color": "#FF6B00", "bg": "#FFF3E0", "align": "right"},
+    "Sarah": {"icon": "⚖️", "color": "#E65100", "bg": "#FFF8E1", "align": "left"},
+    "Dave": {"icon": "📋", "color": "#F57C00", "bg": "#FFF3E0", "align": "left"},
+    "Luna": {"icon": "🏗️", "color": "#FF8F00", "bg": "#FFF8E1", "align": "left"},
+    "Kai": {"icon": "🔨", "color": "#FFB300", "bg": "#FFF3E0", "align": "right"},
+    "Rex": {"icon": "🔍", "color": "#E65100", "bg": "#FFF8E1", "align": "left"},
+    "Nova": {"icon": "🎤", "color": "#FF6B00", "bg": "#FFF3E0", "align": "right"},
+    "Nova (Slides)": {"icon": "📊", "color": "#F57C00", "bg": "#FFF3E0", "align": "right"},
+    "Nova (Script)": {"icon": "🎙️", "color": "#FF8F00", "bg": "#FFF3E0", "align": "right"},
+    "System": {"icon": "🚀", "color": "#FF6B00", "bg": "#FFF3E0", "align": "center"},
+}
+
+# Dialogue pairs
+DIALOGUE_PAIRS = {
+    "Max": "Sarah",
+    "Sarah": "Max",
+    "Kai": "Rex",
+    "Rex": "Kai",
+    "Nova (Slides)": "Nova",
+    "Nova (Script)": "Nova (Slides)",
 }
 
 
@@ -38,12 +50,220 @@ def api_request(method: str, endpoint: str, data: dict | None = None):
             return None
         response.raise_for_status()
         return response.json()
-    except requests.exceptions.ConnectionError:
+    except requests.exceptions.RequestException:
         return None
-    except requests.exceptions.HTTPError:
-        return None
-    except requests.exceptions.Timeout:
-        return None
+
+
+def format_time():
+    """Get current time string."""
+    return datetime.now().strftime("%H:%M")
+
+
+def render_chat_ui():
+    """Render LINE-style chat interface."""
+    messages = st.session_state.stream_messages
+    prev_agent = None
+    
+    # Build HTML for all messages
+    html_parts = []
+    
+    for msg in messages:
+        event_type = msg.get("event_type", "message")
+        agent_name = msg.get("agent_name", "System")
+        role = msg.get("role", "")
+        message = msg.get("message", "")
+        timestamp = msg.get("timestamp", "")
+        
+        agent_info = AGENTS.get(agent_name, {"icon": "🤖", "color": "#95A5A6", "bg": "#F5F5F5", "align": "left"})
+        icon = agent_info["icon"]
+        color = agent_info["color"]
+        bg_color = agent_info["bg"]
+        align = agent_info["align"]
+        
+        # Check if this is a dialogue message
+        expected_reply = DIALOGUE_PAIRS.get(agent_name)
+        is_dialogue = expected_reply is not None and prev_agent == expected_reply
+        prev_agent = agent_name
+        
+        # Skip thinking events (they're shown as status)
+        if event_type == "thinking":
+            html_parts.append(f'<!-- thinking: {agent_name} -->')
+            continue
+        
+        # Phase start/complete - system notifications
+        if event_type in ("phase_start", "phase_complete"):
+            html_parts.append(
+                f'<div class="system-msg">{message}</div>'
+            )
+            continue
+        
+        # Error messages
+        if event_type == "error":
+            html_parts.append(
+                f'<div class="system-msg error">{message}</div>'
+            )
+            continue
+        
+        # Regular messages - LINE/WhatsApp style bubbles
+        if event_type == "message":
+            dialogue_indicator = '<span class="dialogue-badge">↩️</span>' if is_dialogue else ''
+            
+            if align == "right":
+                # Right-aligned message (like sent message)
+                html_parts.append(
+                    f'<div class="msg-row right">'
+                    f'<div class="msg-bubble right" style="background: {color}; color: white;">'
+                    f'<div class="msg-header right">{icon} {agent_name}</div>'
+                    f'<div class="msg-text">{message}</div>'
+                    f'<div class="msg-time right">{dialogue_indicator}{format_time()}</div>'
+                    f'</div>'
+                    f'</div>'
+                )
+            elif align == "center":
+                # Center system message
+                html_parts.append(
+                    f'<div class="msg-row center">'
+                    f'<div class="msg-bubble center">{message}</div>'
+                    f'</div>'
+                )
+            else:
+                # Left-aligned message (like received message)
+                reply_line = f'<div class="reply-to">↩️ ตอบกลับ {expected_reply}</div>' if is_dialogue else ''
+                html_parts.append(
+                    f'<div class="msg-row left">'
+                    f'<div class="avatar">{icon}</div>'
+                    f'<div>'
+                    f'{reply_line}'
+                    f'<div class="msg-bubble left" style="background: {bg_color}; border: 1px solid {color}33;">'
+                    f'<div class="msg-header left" style="color: {color};">{agent_name}</div>'
+                    f'<div class="msg-text">{message}</div>'
+                    f'<div class="msg-time left">{dialogue_indicator}{format_time()}</div>'
+                    f'</div>'
+                    f'</div>'
+                    f'</div>'
+                )
+    
+    # Build complete HTML page
+    full_html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+    <meta charset="UTF-8">
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{ 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #FFF3E0 0%, #FFFFFF 50%, #FFF8E1 100%);
+            min-height: 100vh;
+            padding: 16px;
+        }}
+        
+        .system-msg {{
+            text-align: center;
+            padding: 8px 16px;
+            margin: 12px 0;
+            font-size: 0.85em;
+            color: #666;
+            background: rgba(255, 107, 0, 0.05);
+            border-radius: 16px;
+            max-width: 80%;
+            margin-left: auto;
+            margin-right: auto;
+        }}
+        .system-msg.error {{ background: rgba(244, 67, 54, 0.1); color: #D32F2F; }}
+        
+        .msg-row {{
+            display: flex;
+            align-items: flex-end;
+            margin-bottom: 12px;
+            gap: 8px;
+        }}
+        .msg-row.left {{ justify-content: flex-start; }}
+        .msg-row.right {{ justify-content: flex-end; }}
+        .msg-row.center {{ justify-content: center; }}
+        
+        .avatar {{
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #FF6B00, #FF8F00);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            flex-shrink: 0;
+            box-shadow: 0 2px 8px rgba(255, 107, 0, 0.3);
+        }}
+        
+        .msg-bubble {{
+            max-width: 75%;
+            padding: 12px 16px;
+            border-radius: 18px;
+            position: relative;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+        }}
+        .msg-bubble.left {{
+            border-bottom-left-radius: 4px;
+        }}
+        .msg-bubble.right {{
+            border-bottom-right-radius: 4px;
+        }}
+        .msg-bubble.center {{
+            background: rgba(255, 255, 255, 0.8);
+            font-size: 0.85em;
+        }}
+        
+        .msg-header {{
+            font-size: 0.75em;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }}
+        .msg-header.left {{ color: #FF6B00; }}
+        .msg-header.right {{ color: white; text-align: right; }}
+        
+        .msg-text {{
+            font-size: 0.95em;
+            line-height: 1.5;
+            word-wrap: break-word;
+        }}
+        
+        .msg-time {{
+            font-size: 0.65em;
+            margin-top: 4px;
+            opacity: 0.7;
+        }}
+        .msg-time.left {{ text-align: left; color: #888; }}
+        .msg-time.right {{ text-align: right; color: rgba(255,255,255,0.8); }}
+        
+        .reply-to {{
+            font-size: 0.75em;
+            color: #888;
+            padding: 4px 12px;
+            margin-bottom: -8px;
+            margin-left: 8px;
+        }}
+        
+        .dialogue-badge {{
+            display: inline-block;
+            background: #FF6B00;
+            color: white;
+            border-radius: 50%;
+            width: 16px;
+            height: 16px;
+            line-height: 16px;
+            text-align: center;
+            font-size: 10px;
+            margin-left: 4px;
+        }}
+    </style>
+    </head>
+    <body>
+    {''.join(html_parts)}
+    </body>
+    </html>
+    """
+    
+    return full_html
 
 
 def main():
@@ -53,13 +273,47 @@ def main():
         layout="wide",
     )
 
-    # Custom CSS
+    # Alibaba theme CSS
     st.markdown("""
         <style>
-            .main .block-container { padding-top: 1rem; }
-            #MainMenu {visibility: hidden;}
-            footer {visibility: hidden;}
-            iframe {{ border: none; }}
+            .main { background: white; }
+            .main .block-container { padding: 1rem 2rem; }
+            #MainMenu, footer {visibility: hidden;}
+            
+            /* Header styling */
+            h1 { 
+                color: #FF6B00 !important;
+                border-bottom: 3px solid #FF6B00;
+                padding-bottom: 0.5rem;
+            }
+            h1 span { color: #FF6B00; }
+            
+            /* Sidebar styling */
+            section[data-testid="stSidebar"] {
+                background: linear-gradient(180deg, #FFF3E0, #FFFFFF);
+                border-right: 2px solid #FF6B00;
+            }
+            section[data-testid="stSidebar"] h2 { color: #FF6B00; }
+            
+            /* Buttons */
+            .stButton > button {
+                background: linear-gradient(135deg, #FF6B00, #FF8F00) !important;
+                border: none !important;
+                color: white !important;
+            }
+            .stButton > button:hover {
+                background: linear-gradient(135deg, #E65100, #FF6B00) !important;
+            }
+            
+            /* Progress bar */
+            .stProgress > div > div {
+                background: linear-gradient(90deg, #FF6B00, #FFB300);
+            }
+            
+            /* Idea selection cards */
+            div[style*="border"] {
+                border-color: #FF6B00 !important;
+            }
         </style>
     """, unsafe_allow_html=True)
 
@@ -180,59 +434,9 @@ def show_session_flow():
     status_text = get_status_text(current_layer)
     st.caption(f"Current Phase: **{status_text}**")
 
-    # Chat container
-    st.subheader("💬 Team Chat")
-    
-    # Track dialogue state for auto-detection
-    # Dialogue pairs: Max<->Sarah, Kai<->Rex, Nova variants
-    dialogue_pairs = {
-        "Max": "Sarah",
-        "Sarah": "Max", 
-        "Kai": "Rex",
-        "Rex": "Kai",
-        "Nova (Slides)": "Nova",
-        "Nova (Script)": "Nova (Slides)",
-    }
-    prev_agent_name = None
-    
-    for i, msg in enumerate(st.session_state.stream_messages):
-        agent_name = msg.get("agent_name", "System")
-        event_type = msg.get("event_type", "message")
-        
-        # Detect dialogue: consecutive messages between dialogue pairs
-        expected_reply = dialogue_pairs.get(agent_name)
-        is_dialogue = (
-            event_type == "message" and 
-            expected_reply is not None and
-            prev_agent_name == expected_reply
-        )
-        
-        # Determine who this message is replying to
-        reply_to = prev_agent_name if is_dialogue else None
-        
-        render_chat_bubble(msg, is_dialogue=is_dialogue, reply_to=reply_to)
-        prev_agent_name = agent_name
-    
-    # Show agent_log messages (avoid duplicates)
-    if state.get("agent_log"):
-        shown_messages = {m.get("message", "") for m in st.session_state.stream_messages}
-        for msg in state["agent_log"]:
-            if msg.get("message", "") not in shown_messages:
-                agent_name = msg.get("agent_name", "System")
-                # Check if this is part of a dialogue
-                expected_reply = dialogue_pairs.get(agent_name)
-                is_dialogue = expected_reply is not None and prev_agent_name == expected_reply
-                reply_to = prev_agent_name if is_dialogue else None
-                
-                render_chat_bubble({
-                    "event_type": "message",
-                    "agent": msg.get("agent", "system"),
-                    "agent_name": agent_name,
-                    "emoji": msg.get("emoji", "🤖"),
-                    "role": msg.get("role", ""),
-                    "message": msg.get("message", ""),
-                }, is_dialogue=is_dialogue, reply_to=reply_to)
-                prev_agent_name = agent_name
+    # Render LINE-style chat UI
+    chat_html = render_chat_ui()
+    st.components.v.html(chat_html, height=600, scrolling=True)
 
     # Phase-specific UI
     if current_layer == "hitl_1" and not state.get("selected_idea"):
@@ -252,55 +456,8 @@ def show_session_flow():
         handle_auto_start(state)
     elif not state.get("is_paused") and st.session_state.workflow_started:
         st.info(f"🔄 AI is working... {get_status_text(current_layer)}")
-        # Auto-refresh with delay when workflow is active (no flickering)
         time.sleep(1)
         st.rerun()
-
-
-def render_chat_bubble(msg: dict, is_dialogue: bool = False, reply_to: str | None = None):
-    """Render a chat bubble message with dialogue support.
-    
-    Args:
-        msg: Message data dict
-        is_dialogue: Whether this is part of a conversation thread
-        reply_to: Name of agent this message is replying to (optional)
-    """
-    event_type = msg.get("event_type", "message")
-    emoji = msg.get("emoji", "")
-    agent_name = msg.get("agent_name", "System")
-    role = msg.get("role", "")
-    message = msg.get("message", "")
-    avatar = AGENT_AVATARS.get(agent_name, {"icon": "🤖", "color": "#95A5A6"})
-    avatar_color = avatar.get("color", "#95A5A6")
-    
-    if event_type == "thinking":
-        st.info(f"{emoji} **{agent_name}** *({role})* is thinking...\n\n{message}")
-    elif event_type == "phase_start":
-        st.success(f"{emoji} **{agent_name}**: {message}")
-    elif event_type == "phase_complete":
-        st.success(f"{emoji} **{agent_name}**: {message}")
-    elif event_type == "error":
-        st.error(f"{emoji} **{agent_name}**: {message}")
-    elif event_type == "message":
-        # Build header line
-        dialogue_badge = " 💬 *dialogue*" if is_dialogue else ""
-        header = f"🟢 **{agent_name}**" if not is_dialogue else f"💬 **{agent_name}**"
-        header += f" *({role})*{dialogue_badge}"
-        
-        # Show reply indicator
-        if reply_to:
-            reply_avatar = AGENT_AVATARS.get(reply_to, {"icon": "🤖", "color": "#95A5A6"})
-            reply_color = reply_avatar.get("color", "#95A5A6")
-            st.markdown(
-                f"<sub style='color:#666;'>↩️ ตอบกลับ <span style='color:{reply_color};'>{reply_to}</span></sub>",
-                unsafe_allow_html=True
-            )
-        
-        # Render message with colored name
-        st.markdown(
-            f"{header}\n\n{message}",
-            unsafe_allow_html=True
-        )
 
 
 def get_status_text(layer: str) -> str:
@@ -354,7 +511,6 @@ def handle_idea_selection(state):
                                 "idea_id": idea.get("id"),
                             })
                         if result:
-                            # Add confirmation to stream_messages in correct order
                             st.session_state.stream_messages.append({
                                 "event_type": "message",
                                 "agent": "system",
@@ -380,7 +536,6 @@ def handle_code_review(state):
                     "approved": True,
                 })
             if result:
-                # Add confirmation to stream_messages in correct order
                 st.session_state.stream_messages.append({
                     "event_type": "message",
                     "agent": "system",
@@ -400,7 +555,6 @@ def handle_code_review(state):
                     "feedback": feedback,
                 })
             if result:
-                # Add confirmation to stream_messages in correct order
                 st.session_state.stream_messages.append({
                     "event_type": "message",
                     "agent": "system",
