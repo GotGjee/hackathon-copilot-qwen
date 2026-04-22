@@ -1,0 +1,12 @@
+[theme]
+base="light"
+primaryColor="#FF6B00"
+backgroundColor="#FFFFFF"
+secondaryBackgroundColor="#FFF3E0"
+textColor="#333333"
+
+[client]
+showErrorDetails=false
+
+[browser]
+gatherUsageStats=false

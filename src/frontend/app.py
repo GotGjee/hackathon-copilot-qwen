@@ -436,7 +436,7 @@ def show_session_flow():
 
     # Render LINE-style chat UI
     chat_html = render_chat_ui()
-    st.components.v.html(chat_html, height=600, scrolling=True)
+    st.components.v1.html(chat_html, height=700, scrolling=True)
 
     # Phase-specific UI
     if current_layer == "hitl_1" and not state.get("selected_idea"):
