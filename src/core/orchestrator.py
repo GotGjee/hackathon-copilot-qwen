@@ -424,7 +424,7 @@ class Orchestrator:
         luna_msg = f"🏗️ **Luna (Tech Lead): ออกแบบ Architecture เรียบร้อย!**\n\n"
         luna_msg += f"ผมออกแบบระบบสำหรับ **{state.selected_idea.title if state.selected_idea else 'N/A'}**\n\n"
         luna_msg += f"📁 **โครงสร้างโปรเจกต์:**\n"
-        for f in result.file_tree[:10]:
+        for f in list(result.file_structure.keys())[:10]:
             luna_msg += f"  {f}\n"
         luna_msg += f"\n🏛️ **รูปแบบ:** {result.design_pattern}"
         luna_msg += f"\n📊 **Database:** {result.database_schema}"
