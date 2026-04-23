@@ -143,123 +143,244 @@ class Orchestrator:
             raise
 
     async def run_judging_with_dialogue(self, state: SessionState) -> SessionState:
-        """Layer 1, Phase 2: Evaluate and score ideas with dialogue between Max and Sarah."""
+        """Layer 1, Phase 2: Evaluate and score ideas with NEGOTIATION dialogue between agents.
+        
+        COOL FEATURE: Uses PromptBuilder for dynamic prompt generation!
+        Instead of hardcoding prompts, prompts are built from templates.
+        """
         from src.agents.judge import JudgeAgent
+        from src.agents.ideator import IdeatorAgent
+        from src.core.dialogue import DialogueManager, DialogueHistory
+        from src.core.prompt_builder import PromptBuilder
 
-        logger.info(f"Starting judging with dialogue for session {state.session_id}")
+        logger.info(f"Starting NEGOTIATION dialogue for session {state.session_id}")
+        
+        # Initialize PromptBuilder (COOL!)
+        prompt_builder = PromptBuilder()
         
         # Phase start
-        await emit_phase_start(state.session_id, "judging", "⚖️ วันเพ็ญกำลัง evaluating ideas...")
-        
-        # Step 1: วันเพ็ญ thinking
+        await emit_phase_start(state.session_id, "judging", "⚖️ เริ่มต้นการ negotiate ระหว่างสุรเดชและวันเพ็ญ...")
+
+        # === ROUND 1: วันเพ็ญ evaluates ===
         await emit_agent_thinking(
             state.session_id, "judge", "วันเพ็ญ", "⚖️", "Pragmatic Lead",
             "Analyzing feasibility and scoring each idea...", "judging"
         )
 
-        # Step 2: Sarah evaluates
-        agent = JudgeAgent(self.api_client)
-        result = await agent.evaluate_ideas(
+        judge_agent = JudgeAgent(self.api_client)
+        result = await judge_agent.evaluate_ideas(
             ideas=state.ideas,
             constraints=state.constraints,
         )
-
-        # Store evaluations
         state.evaluations = result.evaluations
 
-        # Step 3: วันเพ็ญ presents her evaluation with dialogue
-        sarah_opening = result.message
+        # วันเพ็ญ presents evaluation
+        wanphen_opening = f"⚖️ **วันเพ็ญ (Pragmatic Lead): เริ่มวิเคราะห์แล้วค่ะ**\n\n"
+        wanphen_opening += f"พี่วิเคราะห์ไอเดียทั้งหมด {len(state.ideas)} ไอเดีย ตามเกณฑ์ 5 ด้าน:\n"
+        wanphen_opening += f"• Feasibility (ความเป็นไปได้): 25%\n"
+        wanphen_opening += f"• Impact (ผลกระทบ): 25%\n"
+        wanphen_opening += f"• Technical Complexity: 20%\n"
+        wanphen_opening += f"• Innovation: 15%\n"
+        wanphen_opening += f"• Market Potential: 15%\n\n"
+        wanphen_opening += f"มาดูผลการวิเคราะห์กันค่ะ..."
+        
         await emit_agent_message(
             state.session_id, "judge", "วันเพ็ญ", "⚖️", "Pragmatic Lead",
-            sarah_opening, "judging"
+            wanphen_opening, "judging"
         )
         state.add_agent_message(
-            agent="judge",
-            agent_name="วันเพ็ญ",
-            emoji="⚖️",
-            role="Pragmatic Lead",
-            message=sarah_opening,
+            agent="judge", agent_name="วันเพ็ญ", emoji="⚖️", role="Pragmatic Lead",
+            message=wanphen_opening,
         )
 
-        # Step 4: วันเพ็ญ critiques each idea
+        # Day phen critiques each idea
         for evaluation in state.evaluations:
-            critique_msg = f"📊 **วิจารณ์ของวันเพ็ญสำหรับ: {evaluation.idea_title}**\n\n"
+            critique_msg = f"📊 **วันเพ็ญวิเคราะห์: {evaluation.idea_title}**\n\n"
+            critique_msg += f"📈 **คะแนนรวม:** {evaluation.total_score}/10\n"
             critique_msg += f"✅ **จุดแข็ง:**\n"
             for s in evaluation.strengths:
                 critique_msg += f"• {s}\n"
             critique_msg += f"\n⚠️ **ความเสี่ยง:**\n"
             for r in evaluation.risks:
                 critique_msg += f"• {r}\n"
-            critique_msg += f"\n📈 **คะแนนรวม:** {evaluation.total_score}/10\n"
-            critique_msg += f"💬 **คำแนะนำ:** {evaluation.recommendation}"
+            critique_msg += f"\n💬 **คำแนะนำ:** {evaluation.recommendation}"
             
             await emit_agent_message(
                 state.session_id, "judge", "วันเพ็ญ", "⚖️", "Pragmatic Lead",
                 critique_msg, "judging"
             )
             state.add_agent_message(
-                agent="judge",
-                agent_name="วันเพ็ญ",
-                emoji="⚖️",
-                role="Pragmatic Lead",
+                agent="judge", agent_name="วันเพ็ญ", emoji="⚖️", role="Pragmatic Lead",
                 message=critique_msg,
             )
 
-        # Step 5: วันเพ็ญ's ranking
-        ranking_msg = f"🏆 **การจัดอันดับของวันเพ็ญ:**\n"
+        # วันเพ็ญ's ranking
+        ranking_msg = f"🏆 **อันดับที่วันเพ็ญแนะนำ:**\n"
         for i, idea_id in enumerate(result.ranking, 1):
             idea = next((idea for idea in state.ideas if idea.id == idea_id), None)
             if idea:
-                ranking_msg += f"{i}. {idea.title}\n"
+                ranking_msg += f"{i}. {idea.title}"
+                if i == 1:
+                    ranking_msg += " ⭐ **แนะนำ!**"
+                ranking_msg += "\n"
         
         await emit_agent_message(
             state.session_id, "judge", "วันเพ็ญ", "⚖️", "Pragmatic Lead",
             ranking_msg, "judging"
         )
         state.add_agent_message(
-            agent="judge",
-            agent_name="วันเพ็ญ",
-            emoji="⚖️",
-            role="Pragmatic Lead",
+            agent="judge", agent_name="วันเพ็ญ", emoji="⚖️", role="Pragmatic Lead",
             message=ranking_msg,
         )
 
-        # Step 6: สุรเดช responds to วันเพ็ญ's critique
+        # === NEGOTIATION: Start dialogue loop ===
+        dialogue_manager = DialogueManager(max_turns=3)
+        dialogue = dialogue_manager.start_dialogue(
+            dialogue_id=f"negotiation_{state.session_id}",
+            topic=f"Negotiating the best idea for: {state.theme}"
+        )
+
+        # === ROUND 2: สุรเดช responds to วันเพ็ญ's ranking ===
+        await emit_phase_start(state.session_id, "judging", "🧠 สุรเดชตอบกลับวันเพ็ญ...")
+        
+        ideator_agent = IdeatorAgent(self.api_client)
+        
+        top_idea_id = result.ranking[0] if result.ranking else None
+        top_idea = next((idea for idea in state.ideas if idea.id == top_idea_id), None) if top_idea_id else None
+        
         await emit_agent_thinking(
             state.session_id, "ideator", "สุรเดช", "🧠", "Creative Director",
-            "Responding to วันเพ็ญ's evaluation...", "judging"
+            "Responding to วันเพ็ญ's evaluation with negotiation...", "judging"
         )
-        
-        max_response = f"💬 **สุรเดชตอบกลับวันเพ็ญ:**\n\n"
-        max_response += f"วันเพ็ญวิเคราะห์ได้เฉียบขาดมาก! พี่เห็นด้วยกับประเด็นเรื่องความเสี่ยง\n\n"
-        
-        # Add สุรเดช's defense for top idea
-        top_idea_id = result.ranking[0] if result.ranking else None
-        if top_idea_id:
-            top_idea = next((idea for idea in state.ideas if idea.id == top_idea_id), None)
-            if top_idea:
-                max_response += f"สำหรับ **{top_idea.title}** พี่คิดว่าเราสามารถจัดการความเสี่ยงได้โดย:\n"
-                max_response += f"• ใช้ MVP scope ที่เล็กที่สุด\n"
-                max_response += f"• โฟกัสที่ core feature ก่อน\n\n"
-        
-        max_response += f"ขอให้ทีมช่วยพิจารณาไอเดียที่วันเพ็ญแนะนำเป็นอันดับแรกนะครับ!"
-        
+
+        # COOL: Use PromptBuilder instead of hardcode!
+        sudet_prompts = prompt_builder.get_negotiation_prompt(
+            agent_name="สุรเดช",
+            agent_role="Creative Director",
+            agent_system_prompt=ideator_agent.prompt_template.get("system_prompt", ""),
+            opposing_name="วันเพ็ญ",
+            opposing_view=result.message,
+            dialogue_history=dialogue.get_formatted_history() if dialogue.turns else "",
+            context={
+                "top_idea": top_idea.model_dump() if top_idea else "N/A",
+                "instructions": (
+                    "1. เห็นด้วยหรือไม่เห็นด้วย พร้อมเหตุผล\n"
+                    "2. เสนอไอเดียที่ปรับปรุงตาม feedback วันเพ็ญ\n"
+                    "3. ถ้า disagree ต้องอธิบายว่าทำไม และเสนอทางเลือก\n"
+                    "4. ตอบเป็นภาษาไทย + English technical terms"
+                ),
+            },
+        )
+
+        sudet_response = await ideator_agent.api_client.chat_completion(
+            messages=[
+                {"role": "system", "content": sudet_prompts["system"]},
+                {"role": "user", "content": sudet_prompts["user"]},
+            ],
+            model=ideator_agent.model,
+            temperature=ideator_agent.temperature,
+            max_tokens=ideator_agent.max_tokens,
+        )
+
+        # Add to dialogue
+        dialogue.add_turn(
+            agent_type="ideator", agent_name="สุรเดช", emoji="🧠",
+            role="Creative Director", message=sudet_response
+        )
+
         await emit_agent_message(
             state.session_id, "ideator", "สุรเดช", "🧠", "Creative Director",
-            max_response, "judging"
+            f"💬 **สุรเดชตอบกลับวันเพ็ญ:**\n\n{sudet_response}",
+            "judging"
         )
         state.add_agent_message(
-            agent="ideator",
-            agent_name="สุรเดช",
-            emoji="🧠",
-            role="Creative Director",
-            message=max_response,
+            agent="ideator", agent_name="สุรเดช", emoji="🧠", role="Creative Director",
+            message=f"💬 **สุรเดชตอบกลับวันเพ็ญ:**\n\n{sudet_response}",
+        )
+
+        # === ROUND 3: วันเพ็ญ responds to สุรเดช ===
+        await emit_phase_start(state.session_id, "judging", "⚖️ วันเพ็ญตอบกลับสุรเดช...")
+        
+        await emit_agent_thinking(
+            state.session_id, "judge", "วันเพ็ญ", "⚖️", "Pragmatic Lead",
+            "Responding to Sudet's counter-arguments...", "judging"
+        )
+
+        # COOL: Use PromptBuilder for judge counter too!
+        wanphen_prompts = prompt_builder.get_judge_counter_prompt(
+            agent_name="วันเพ็ญ",
+            agent_role="Pragmatic Lead",
+            agent_system_prompt=judge_agent.prompt_template.get("system_prompt", ""),
+            opposing_name="สุรเดช",
+            opposing_view=sudet_response,
+            dialogue_history=dialogue.get_formatted_history(),
+            context={
+                "instructions": (
+                    "1. รับฟังประเด็นที่สุรเดชเสนอ\n"
+                    "2. เห็นด้วยหรือไม่เห็นด้วย พร้อมเหตุผลเชิงตรรกะ\n"
+                    "3. ถ้า disagree ให้เสนอ alternative ที่ realistic\n"
+                    "4. สรุปว่าไอเดียไหนควรไปต่อ และทำไม\n"
+                    "5. ตอบเป็นภาษาไทย + English technical terms"
+                ),
+            },
+        )
+
+        wanphen_counter_response = await judge_agent.api_client.chat_completion(
+            messages=[
+                {"role": "system", "content": wanphen_prompts["system"]},
+                {"role": "user", "content": wanphen_prompts["user"]},
+            ],
+            model=judge_agent.model,
+            temperature=judge_agent.temperature,
+            max_tokens=judge_agent.max_tokens,
+        )
+
+        # Add to dialogue
+        dialogue.add_turn(
+            agent_type="judge", agent_name="วันเพ็ญ", emoji="⚖️",
+            role="Pragmatic Lead", message=wanphen_counter_response
+        )
+
+        await emit_agent_message(
+            state.session_id, "judge", "วันเพ็ญ", "⚖️", "Pragmatic Lead",
+            f"💬 **วันเพ็ญตอบกลับสุรเดช:**\n\n{wanphen_counter_response}",
+            "judging"
+        )
+        state.add_agent_message(
+            agent="judge", agent_name="วันเพ็ญ", emoji="⚖️", role="Pragmatic Lead",
+            message=f"💬 **วันเพ็ญตอบกลับสุรเดช:**\n\n{wanphen_counter_response}",
+        )
+
+        # === ROUND 4: Final consensus ===
+        await emit_phase_start(state.session_id, "judging", "🤝 หาฉันทามติร่วมกัน...")
+        
+        # COOL: Use PromptBuilder for consensus!
+        consensus_statement = f"ทีมเห็นด้วยกับไอเดียที่วันเพ็ญแนะนำเป็นอันดับ 1"
+        if top_idea:
+            consensus_statement += f": **{top_idea.title}**"
+        consensus_statement += f"\n\nโดยทั้งสองฝ่ายเห็นร่วมกันว่าสามารถพัฒนาเป็น MVP ได้ภายในเวลาที่กำหนด"
+
+        consensus_msg = prompt_builder.get_consensus_prompt(
+            agent1_name="สุรเดช",
+            agent2_name="วันเพ็ญ",
+            dialogue_history=dialogue.get_formatted_history(),
+            consensus_statement=consensus_statement,
+        )
+
+        await emit_agent_message(
+            state.session_id, "judge", "วันเพ็ญ", "⚖️", "Pragmatic Lead",
+            f"🤝 **บทสรุปการ negotiate:**\n\n{consensus_msg}",
+            "judging"
+        )
+        state.add_agent_message(
+            agent="judge", agent_name="วันเพ็ญ", emoji="⚖️", role="Pragmatic Lead",
+            message=f"🤝 **บทสรุปการ negotiate:**\n\n{consensus_msg}",
         )
 
         await emit_phase_complete(state.session_id, "judging")
 
         # Pause for human selection (HITL 1)
-        state.pause_for_hitl("Please review the scored ideas and select one to proceed.")
+        state.pause_for_hitl("Agents have negotiated and reached consensus. Please review and select an idea.")
         state.transition_to(WorkflowLayer.HITL_1)
         _save_state(state)
         return state
@@ -530,7 +651,7 @@ class Orchestrator:
             kai_msg += f"• `{f.filepath}`\n"
         kai_msg += f"\n✅ **Tech stack:** {', '.join(state.selected_idea.tech_stack if state.selected_idea else [])}\n"
         kai_msg += f"\nผมสร้าง **skeleton code** พร้อม TODO comments ให้แล้ว\n"
-        kai_msg += f"นักศึกษาสามารถเริ่มพัฒนาต่อได้ทันที โดยดู TODO ในแต่ละไฟล์\n"
+        kai_msg += f"คุณสามารถเริ่มพัฒนาต่อได้ทันที โดยดู TODO ในแต่ละไฟล์\n"
         kai_msg += f"พร้อมส่งให้วิชัยทำ code review แล้วครับ!"
         
         await emit_agent_message(
