@@ -8,6 +8,7 @@ import requests
 import time
 import os
 from datetime import datetime
+from typing import Optional
 
 API_BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:8000")
 
@@ -35,6 +36,165 @@ CSS = """
     padding-bottom: 1rem !important;
     padding-left: 1rem !important;
     padding-right: 1rem !important;
+}
+
+/* File Tree View */
+.file-tree {
+    background: #1E1E1E;
+    border-radius: 12px;
+    padding: 16px;
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
+    font-size: 0.8rem;
+    max-height: 400px;
+    overflow-y: auto;
+}
+.file-tree::-webkit-scrollbar {
+    width: 8px;
+}
+.file-tree::-webkit-scrollbar-track {
+    background: #1E1E1E;
+}
+.file-tree::-webkit-scrollbar-thumb {
+    background: #444;
+    border-radius: 4px;
+}
+.tree-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #888;
+    font-size: 0.75rem;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #333;
+}
+.tree-item {
+    display: flex;
+    align-items: center;
+    padding: 6px 10px;
+    margin: 2px 0;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    color: #CCC;
+    gap: 8px;
+}
+.tree-item:hover {
+    background: #2D2D2D;
+    color: #FFB74D;
+}
+.tree-item.selected {
+    background: #2D2D2D;
+    color: #FF8F00;
+}
+.tree-icon {
+    font-size: 1rem;
+    flex-shrink: 0;
+}
+.tree-folder {
+    color: #81C784;
+}
+.tree-file {
+    color: #64B5F6;
+}
+.tree-file-md {
+    color: #B39DDB;
+}
+.tree-file-yaml {
+    color: #FFB74D;
+}
+.tree-file-txt {
+    color: #90A4AE;
+}
+.tree-indent {
+    width: 20px;
+    flex-shrink: 0;
+}
+
+/* Code Block with Syntax Highlighting */
+.code-viewer {
+    background: #1E1E1E;
+    border-radius: 12px;
+    overflow: hidden;
+    margin: 12px 0;
+}
+.code-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #2D2D2D;
+    padding: 10px 16px;
+    border-bottom: 1px solid #333;
+}
+.code-filename {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 0.8rem;
+    color: #CCC;
+}
+.code-lang-badge {
+    background: #FF6B00;
+    color: white;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+.code-body {
+    padding: 16px;
+    overflow-x: auto;
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
+    font-size: 0.8rem;
+    line-height: 1.6;
+    color: #D4D4D4;
+    max-height: 500px;
+    overflow-y: auto;
+    white-space: pre;
+    tab-size: 4;
+}
+.code-body::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+.code-body::-webkit-scrollbar-track {
+    background: #1E1E1E;
+}
+.code-body::-webkit-scrollbar-thumb {
+    background: #444;
+    border-radius: 4px;
+}
+
+/* Syntax Highlighting (VS Code Dark+ Theme) */
+.syn-keyword { color: #569CD6; }
+.syn-string { color: #CE9178; }
+.syn-comment { color: #6A9955; font-style: italic; }
+.syn-number { color: #B5CEA8; }
+.syn-function { color: #DCDCAA; }
+.syn-class { color: #4EC9B0; }
+.syn-decorator { color: #DCDCAA; }
+.syn-type { color: #4EC9B0; }
+.syn-operator { color: #D4D4D4; }
+.syn-punctuation { color: #808080; }
+.syn-boolean { color: #569CD6; }
+.syn-import { color: #C586C0; }
+.syn-self { color: #569CD6; font-style: italic; }
+.syn-markdown-h1 { color: #569CD6; font-weight: bold; }
+.syn-markdown-h2 { color: #569CD6; font-weight: bold; }
+.syn-markdown-h3 { color: #569CD6; font-weight: bold; }
+.syn-markdown-link { color: #4EC9B0; }
+.syn-markdown-code { color: #CE9178; }
+.syn-yaml-key { color: #569CD6; }
+.syn-yaml-value { color: #CE9178; }
+
+/* File Stats Bar */
+.file-stats {
+    display: flex;
+    gap: 16px;
+    padding: 8px 16px;
+    background: #2D2D2D;
+    border-top: 1px solid #333;
+    font-size: 0.7rem;
+    color: #888;
 }
 
 /* Create page card */
@@ -182,6 +342,253 @@ def api(method, ep, data=None):
 
 def ftime():
     return datetime.now().strftime("%H:%M")
+
+
+# Language extensions mapping for syntax highlighting
+LANG_EXT = {
+    ".py": "python", ".pyi": "python",
+    ".ts": "typescript", ".tsx": "typescript",
+    ".js": "javascript", ".jsx": "javascript",
+    ".html": "html", ".css": "css", ".scss": "css",
+    ".json": "json", ".yaml": "yaml", ".yml": "yaml",
+    ".md": "markdown", ".txt": "text",
+    ".sql": "sql", ".sh": "bash",
+    ".toml": "toml", ".env": "text",
+    ".dockerfile": "dockerfile",
+}
+
+
+def get_language_from_path(filepath: str) -> str:
+    """Get language from file extension."""
+    if filepath.endswith(".dockerfile"):
+        return "dockerfile"
+    ext = os.path.splitext(filepath)[1].lower()
+    return LANG_EXT.get(ext, "text")
+
+
+def highlight_python(code: str) -> str:
+    """Simple Python syntax highlighting."""
+    import re
+    lines = code.split('\n')
+    result = []
+    for line in lines:
+        hl = line
+        # Comments
+        hl = re.sub(r'(#.+)$', r'<span class="syn-comment">\1</span>', hl)
+        # Strings (triple quotes, double quotes, single quotes)
+        hl = re.sub(r'(""".*?"""|\'\'\'.*?\'\'\')', r'<span class="syn-string">\1</span>', hl)
+        hl = re.sub(r'("(?:[^"\\]|\\.)*")', r'<span class="syn-string">\1</span>', hl)
+        hl = re.sub(r"('(?:[^'\\]|\\.)*')", r'<span class="syn-string">\1</span>', hl)
+        # f-strings
+        hl = re.sub(r'(f"(?:[^"\\]|\\.)*")', r'<span class="syn-string">\1</span>', hl)
+        hl = re.sub(r"(f'(?:[^'\\]|\\.)*')", r'<span class="syn-string">\1</span>', hl)
+        # Keywords
+        for kw in ['def ', 'class ', 'import ', 'from ', 'return ', 'async ', 'await ',
+                    'if ', 'elif ', 'else ', 'for ', 'while ', 'try:', 'except ', 'finally:',
+                    'with ', 'yield ', 'raise ', 'pass', 'break ', 'continue ',
+                    'True', 'False', 'None', 'and ', 'or ', 'not ', 'in ', 'is ',
+                    'lambda ', 'global ', 'nonlocal ']:
+            if kw.endswith(' '):
+                hl = hl.replace(kw, f'<span class="syn-keyword">{kw}</span>')
+        # Decorators
+        hl = re.sub(r'(@\w+)', r'<span class="syn-decorator">\1</span>', hl)
+        # self
+        hl = re.sub(r'\bself\b', r'<span class="syn-self">self</span>', hl)
+        # Function calls
+        hl = re.sub(r'(\w+)(\()', r'<span class="syn-function">\1</span>\2', hl)
+        result.append(hl)
+    return '\n'.join(result)
+
+
+def highlight_typescript(code: str) -> str:
+    """Simple TypeScript/JavaScript syntax highlighting."""
+    import re
+    lines = code.split('\n')
+    result = []
+    for line in lines:
+        hl = line
+        # Comments
+        hl = re.sub(r'(//.+)$', r'<span class="syn-comment">\1</span>', hl)
+        hl = re.sub(r'(/\*.*?\*/)', r'<span class="syn-comment">\1</span>', hl)
+        # Strings
+        hl = re.sub(r'(`[^`]*`)', r'<span class="syn-string">\1</span>', hl)
+        hl = re.sub(r'("(?:[^"\\]|\\.)*")', r'<span class="syn-string">\1</span>', hl)
+        hl = re.sub(r"('(?:[^'\\]|\\.)*')", r'<span class="syn-string">\1</span>', hl)
+        # Keywords
+        for kw in ['import ', 'from ', 'export ', 'const ', 'let ', 'var ', 'function ',
+                    'async ', 'await ', 'return ', 'if ', 'else ', 'for ', 'while ',
+                    'class ', 'interface ', 'type ', 'extends ', 'implements ',
+                    'new ', 'this', 'throw ', 'try ', 'catch ', 'finally ',
+                    'switch ', 'case ', 'break ', 'default ', 'true', 'false', 'null',
+                    'undefined', 'void ', 'typeof ', 'instanceof ']:
+            if kw.endswith(' '):
+                hl = hl.replace(kw, f'<span class="syn-keyword">{kw}</span>')
+        # Function calls
+        hl = re.sub(r'(\w+)(\()', r'<span class="syn-function">\1</span>\2', hl)
+        result.append(hl)
+    return '\n'.join(result)
+
+
+def highlight_markdown(code: str) -> str:
+    """Simple Markdown syntax highlighting."""
+    import re
+    lines = code.split('\n')
+    result = []
+    for line in lines:
+        hl = line
+        # Headers
+        hl = re.sub(r'^(#{1,6})\s+(.+)$', r'<span class="syn-markdown-h1">\1 \2</span>', hl)
+        # Links
+        hl = re.sub(r'(\[.+?\])(\(.+?\))', r'<span class="syn-markdown-link">\1</span>\2', hl)
+        # Inline code
+        hl = re.sub(r'(`.+?`)', r'<span class="syn-markdown-code">\1</span>', hl)
+        # Bold/Italic
+        hl = re.sub(r'(\*\*.*?\*\*)', r'<strong>\1</strong>', hl)
+        result.append(hl)
+    return '\n'.join(result)
+
+
+def highlight_yaml(code: str) -> str:
+    """Simple YAML syntax highlighting."""
+    import re
+    lines = code.split('\n')
+    result = []
+    for line in lines:
+        hl = line
+        # Comments
+        hl = re.sub(r'(#.+)$', r'<span class="syn-comment">\1</span>', hl)
+        # Keys
+        hl = re.sub(r'^(\s*)([\w_]+)(:)', r'\1<span class="syn-yaml-key">\2</span><span class="syn-punctuation">\3</span>', hl)
+        # String values after colon
+        hl = re.sub(r'(:\s+)(.+)$', r'\1<span class="syn-yaml-value">\2</span>', hl)
+        result.append(hl)
+    return '\n'.join(result)
+
+
+def highlight_code(code: str, language: str) -> str:
+    """Apply syntax highlighting based on language."""
+    if language in ('python', 'py'):
+        return highlight_python(code)
+    elif language in ('typescript', 'javascript', 'ts', 'tsx', 'js', 'jsx'):
+        return highlight_typescript(code)
+    elif language == 'markdown':
+        return highlight_markdown(code)
+    elif language in ('yaml', 'yml', 'toml'):
+        return highlight_yaml(code)
+    else:
+        # Escape HTML for other languages
+        import html
+        return html.escape(code)
+
+
+def get_file_icon(filepath: str) -> tuple:
+    """Get icon and class for a file based on extension."""
+    ext = os.path.splitext(filepath)[1].lower()
+    icons = {
+        ".py": ("🐍", "tree-file"),
+        ".ts": ("📘", "tree-file"),
+        ".tsx": ("⚛️", "tree-file"),
+        ".js": ("📜", "tree-file"),
+        ".html": ("🌐", "tree-file"),
+        ".css": ("🎨", "tree-file"),
+        ".json": ("📋", "tree-file"),
+        ".yaml": ("⚙️", "tree-file-yaml"),
+        ".yml": ("⚙️", "tree-file-yaml"),
+        ".md": ("📝", "tree-file-md"),
+        ".txt": ("📄", "tree-file-txt"),
+        ".sql": ("🗃️", "tree-file"),
+        ".sh": ("🖥️", "tree-file"),
+        ".toml": ("⚙️", "tree-file-yaml"),
+        ".env": ("🔐", "tree-file-txt"),
+        ".dockerfile": ("🐳", "tree-file"),
+    }
+    return icons.get(ext, ("📄", "tree-file"))
+
+
+def build_file_tree(code_artifacts: dict, selected_file: Optional[str] = None) -> str:
+    """Build a file tree view HTML from code artifacts."""
+    if not code_artifacts:
+        return '<div style="text-align:center;color:#666;padding:2rem">📂 No files generated yet</div>'
+    
+    # Build directory structure
+    tree = {}
+    for filepath in sorted(code_artifacts.keys()):
+        parts = filepath.split('/')
+        current = tree
+        for part in parts[:-1]:
+            if part not in current:
+                current[part] = {}
+            current = current[part]
+        current[parts[-1]] = filepath  # leaf node
+    
+    def render_tree(node, path="", indent=0):
+        html_parts = []
+        for key in sorted(node.keys()):
+            value = node[key]
+            icon_class = "tree-folder"
+            icon = "📁"
+            is_leaf = isinstance(value, str)
+            
+            if is_leaf:
+                icon, icon_class = get_file_icon(key)
+                if value == selected_file:
+                    icon_class += " selected"
+                file_path_attr = f'data-file="{value}"'
+                click_handler = f'onclick="selectFile(\'{value}\')"'
+                html_parts.append(
+                    f'<div class="tree-item {icon_class}" {file_path_attr} {click_handler} style="padding-left:{10 + indent*20}px">'
+                    f'<span class="tree-icon">{icon}</span>'
+                    f'<span>{key}</span>'
+                    f'</div>'
+                )
+            else:
+                html_parts.append(
+                    f'<div class="tree-item {icon_class}" style="padding-left:{10 + indent*20}px">'
+                    f'<span class="tree-icon">{icon}</span>'
+                    f'<span>{key}/</span>'
+                    f'</div>'
+                )
+                html_parts.append(render_tree(value, f"{path}{key}/", indent + 1))
+        
+        return '\n'.join(html_parts)
+    
+    total_files = len(code_artifacts)
+    total_lines = sum(len(cf.get("content", "").split('\n')) for cf in code_artifacts.values())
+    
+    return f'''
+    <div class="file-tree">
+        <div class="tree-header">
+            <span>📁 Project Files</span>
+            <span style="margin-left:auto">{total_files} files, {total_lines} lines</span>
+        </div>
+        <script>
+        function selectFile(filepath) {{
+            window.parent.postMessage({{type: 'selectFile', filepath: filepath}}, '*');
+        }}
+        </script>
+        {render_tree(tree)}
+    </div>
+    '''
+
+
+def render_code_viewer(filepath: str, content: str, language: str = "python") -> str:
+    """Render a code viewer with syntax highlighting."""
+    highlighted = highlight_code(content, language)
+    lang_display = language.upper()
+    
+    return f'''
+    <div class="code-viewer">
+        <div class="code-header">
+            <span class="code-filename">📄 {filepath}</span>
+            <span class="code-lang-badge">{lang_display}</span>
+        </div>
+        <div class="code-body">{highlighted}</div>
+        <div class="file-stats">
+            <span>📏 {len(content.split(chr(10)))} lines</span>
+            <span>📦 {len(content)} bytes</span>
+        </div>
+    </div>
+    '''
 
 
 def render_bubbles(msgs):
@@ -409,18 +816,84 @@ def render_chat():
                     use_container_width=True,
                 )
 
-    # Code review
+    # Code review with File Tree + Code Viewer
     if layer == "hitl_2":
+        code_artifacts = state.get("code_artifacts", {})
+        
+        # Initialize selected file in session state
+        if "selected_file" not in st.session_state:
+            # Default to first file or README.md
+            if code_artifacts:
+                st.session_state.selected_file = "README.md" if "README.md" in code_artifacts else next(iter(code_artifacts.keys()))
+            else:
+                st.session_state.selected_file = None
+        
         st.markdown("### 🔍 ตรวจสอบโค้ด")
-        st.caption("โค้ดถูกสร้างเรียบร้อยแล้ว ต้องการอนุมัติหรือแก้ไข?")
-        c1, c2 = st.columns(2)
+        st.caption("คลิกที่ไฟล์ใน tree เพื่อดูโค้ด | โค้ดถูกสร้างเรียบร้อยแล้ว ต้องการอนุมัติหรือแก้ไข?")
+        
+        # Convert code_artifacts from dict to proper format for rendering
+        code_dict = {}
+        if code_artifacts:
+            for fp, cf in code_artifacts.items():
+                if isinstance(cf, dict):
+                    code_dict[fp] = cf
+                else:
+                    code_dict[fp] = {
+                        "filepath": cf.get("filepath", fp) if hasattr(cf, "get") else fp,
+                        "content": cf.get("content", "") if hasattr(cf, "get") else str(cf),
+                        "language": cf.get("language", "python") if hasattr(cf, "get") else get_language_from_path(fp),
+                    }
+        
+        # Two-column layout for code review
+        col_tree, col_code = st.columns([1, 2])
+        
+        with col_tree:
+            # File Tree
+            tree_html = build_file_tree(code_dict, st.session_state.selected_file)
+            st.markdown(tree_html, unsafe_allow_html=True)
+            
+            # Create a selectbox for file selection (fallback for Streamlit)
+            file_list = list(code_dict.keys()) if code_dict else []
+            if file_list:
+                selected = st.selectbox(
+                    "📄 เลือกไฟล์:",
+                    options=file_list,
+                    index=file_list.index(st.session_state.selected_file) if st.session_state.selected_file in file_list else 0,
+                    key="file_selector",
+                )
+                if selected != st.session_state.selected_file:
+                    st.session_state.selected_file = selected
+                    st.rerun()
+        
+        with col_code:
+            # Code Viewer
+            if st.session_state.selected_file and st.session_state.selected_file in code_dict:
+                cf = code_dict[st.session_state.selected_file]
+                filepath = st.session_state.selected_file
+                content = cf.get("content", "") if isinstance(cf, dict) else ""
+                language = cf.get("language", get_language_from_path(filepath)) if isinstance(cf, dict) else get_language_from_path(filepath)
+                
+                code_html = render_code_viewer(filepath, content, language)
+                st.markdown(code_html, unsafe_allow_html=True)
+                
+                # Copy button
+                if st.button("📋 คัดลอกโค้ด", key="copy_code_btn"):
+                    st.code(content, language=language if language != "text" else None)
+            else:
+                st.markdown('<div style="text-align:center;color:#666;padding:3rem">👈 เลือกไฟล์เพื่อดูโค้ด</div>', unsafe_allow_html=True)
+        
+        st.markdown("---")
+        
+        # Review actions
+        st.markdown("### 📝 Review Actions")
+        c1, c2 = st.columns([1, 2])
         with c1:
-            if st.button("✅ อนุมัติ", type="primary", use_container_width=True):
+            if st.button("✅ อนุมัติโค้ด", type="primary", use_container_width=True):
                 api("POST", f"/sessions/{sid}/review-code", {"approved": True})
                 st.rerun()
         with c2:
-            fb = st.text_area("💬 Feedback (ถ้าต้องการแก้ไข)", key="rfb", height=60)
-            if st.button("❌ แก้ไข", use_container_width=True):
+            fb = st.text_area("💬 Feedback (ถ้าต้องการแก้ไข)", key="rfb", height=50, placeholder="อธิบายสิ่งที่ต้องการให้แก้ไข...")
+            if st.button("❌ ส่งกลับแก้ไข", use_container_width=True):
                 api("POST", f"/sessions/{sid}/review-code", {"approved": False, "feedback": fb})
                 st.rerun()
 
