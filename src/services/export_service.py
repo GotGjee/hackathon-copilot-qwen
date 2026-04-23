@@ -56,15 +56,23 @@ Date: {datetime.now().isoformat()}
 
             zf.writestr("README.md", readme_content)
 
-            # Add code files - handle both CodeFile models and dicts
+            # Add code files - handle CodeFile models, dicts, or other formats
             for file_path, file_data in code_artifacts.items():
-                if hasattr(file_data, 'content'):
-                    # It's a CodeFile model
-                    content = file_data.content
-                elif isinstance(file_data, dict):
+                content = ""
+                if isinstance(file_data, dict):
+                    # It's a dict - get content from 'content' key
                     content = file_data.get("content", "")
+                elif hasattr(file_data, 'content'):
+                    # It's an object with content attribute (CodeFile, etc.)
+                    content = file_data.content
                 else:
+                    # Fallback - convert to string
                     content = str(file_data)
+                
+                # Skip empty files
+                if not content:
+                    continue
+                    
                 zf.writestr(file_path, content)
 
         return str(filepath)

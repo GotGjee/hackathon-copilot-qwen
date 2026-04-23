@@ -174,6 +174,13 @@ async def get_session(session_id: str):
         "evaluations": [e.model_dump() for e in state.evaluations],
         "selected_idea": state.selected_idea.model_dump() if state.selected_idea else None,
         "agent_log": [m.model_dump() for m in state.agent_log[-20:]],
+        # Export-related fields
+        "code_artifacts": {
+            path: cf.model_dump() for path, cf in state.code_artifacts.items()
+        } if state.code_artifacts else None,
+        "narrative": state.narrative.model_dump() if hasattr(state.narrative, 'model_dump') and state.narrative else state.narrative,
+        "slides": [s.model_dump() for s in state.slides] if state.slides else None,
+        "script": [s.model_dump() for s in state.script] if state.script else None,
     }
 
 

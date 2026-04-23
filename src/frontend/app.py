@@ -12,16 +12,16 @@ from datetime import datetime
 API_BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:8000")
 
 AGENTS = {
-    "Max": {"icon": "🧠", "color": "#FF6B00", "bg": "#FFF3E0"},
-    "Sarah": {"icon": "⚖️", "color": "#E65100", "bg": "#FFF8E1"},
-    "Dave": {"icon": "📋", "color": "#F57C00", "bg": "#FFFDE7"},
-    "Luna": {"icon": "🏗️", "color": "#FF8F00", "bg": "#FFF3E0"},
-    "Kai": {"icon": "🔨", "color": "#EF6C00", "bg": "#FBE9E7"},
-    "Rex": {"icon": "🔍", "color": "#BF360C", "bg": "#FFCCBC"},
-    "Nova": {"icon": "🎤", "color": "#FF6B00", "bg": "#FFF3E0"},
-    "Nova (Slides)": {"icon": "📊", "color": "#E65100", "bg": "#FFF8E1"},
-    "Nova (Script)": {"icon": "🎙️", "color": "#FF8F00", "bg": "#FFF3E0"},
-    "System": {"icon": "🚀", "color": "#999", "bg": "#F5F5F5"},
+    "สุรเดช": {"icon": "🧠", "color": "#FF6B00", "bg": "#FFF3E0", "personality": "ชอบคิดไอเดียเพี้ยนๆ แต่ใช้ได้จริง"},
+    "วันเพ็ญ": {"icon": "⚖️", "color": "#E65100", "bg": "#FFF8E1", "personality": "ชอบวิเคราะห์ บอกตรงๆ ไม่อ้อมค้อม"},
+    "สมศักดิ์": {"icon": "📋", "color": "#F57C00", "bg": "#FFFDE7", "personality": "ชอบจัดระบบ แบ่งงานละเอียด"},
+    "พิมพ์ใจ": {"icon": "🏗️", "color": "#FF8F00", "bg": "#FFF3E0", "personality": "ชอบออกแบบ architecture สวยๆ"},
+    "ธนภัทร": {"icon": "🔨", "color": "#EF6C00", "bg": "#FBE9E7", "personality": "โค้ดเร็ว เขียน skeleton ให้เลย"},
+    "วิชัย": {"icon": "🔍", "color": "#BF360C", "bg": "#FFCCBC", "personality": "ตาดี มองเห็นทุกบั๊ก"},
+    "อรุณี": {"icon": "🎤", "color": "#FF6B00", "bg": "#FFF3E0", "personality": "ชอบเล่าเรื่อง ให้กรรมการร้องว้าว"},
+    "อรุณี (Slides)": {"icon": "📊", "color": "#E65100", "bg": "#FFF8E1", "personality": "slide ต้องสวย พี่จัดให้"},
+    "อรุณี (Script)": {"icon": "🎙️", "color": "#FF8F00", "bg": "#FFF3E0", "personality": "บทพูดต้องปัง ติดใจแน่นอน"},
+    "System": {"icon": "🚀", "color": "#999", "bg": "#F5F5F5", "personality": ""},
 }
 
 CSS = """
@@ -192,8 +192,9 @@ def render_bubbles(msgs):
         txt = m.get("message", "")
         if et == "thinking":
             continue
-        ag = AGENTS.get(an, {"icon": "🤖", "color": "#999", "bg": "#F5F5F5"})
+        ag = AGENTS.get(an, {"icon": "🤖", "color": "#999", "bg": "#F5F5F5", "personality": ""})
         ic, co, bg = ag["icon"], ag["color"], ag["bg"]
+        personality_tag = f'<div style="font-size:0.6rem;color:#999;font-style:italic;margin-top:2px">"{ag.get("personality", "")}"</div>' if ag.get("personality") else ""
         if et in ("phase_start", "phase_complete"):
             parts.append(f'<div class="sys">{txt}</div>')
         elif et == "error":
@@ -206,6 +207,7 @@ def render_bubbles(msgs):
                 f'<div class="bub-body">'
                 f'<div class="bub-name" style="color:{co}">{an}</div>'
                 f'<div class="bub" style="background:{bg}">{txt_escaped}</div>'
+                f'{personality_tag}'
                 f'<div class="bub-time">{ftime()}</div>'
                 f'</div></div>'
             )
@@ -292,10 +294,10 @@ def render_chat():
     except: pass
 
     status = {
-        "idle":"🟡 Ready","ideation":"🧠 Max is brainstorming...","judging":"⚖️ Sarah is evaluating...",
-        "hitl_1":"⏸️ เลือกไอเดีย","planning":"📋 Dave is planning...","architecting":"🏗️ Luna is designing...",
-        "building":"🔨 Kai is coding...","critiquing":"🔍 Rex is reviewing...","hitl_2":"⏸️ ตรวจสอบโค้ด",
-        "pitching":"🎤 Nova is preparing...","complete":"✅ เสร็จสมบูรณ์!","error":"❌ เกิดข้อผิดพลาด",
+        "idle":"🟡 พร้อมแล้ว","ideation":"🧠 สุรเดชกำลัง brainstorming...","judging":"⚖️ วันเพ็ญกำลัง evaluating...",
+        "hitl_1":"⏸️ เลือกไอเดีย","planning":"📋 สมศักดิ์กำลัง planning...","architecting":"🏗️ พิมพ์ใจกำลัง designing...",
+        "building":"🔨 ธนภัทรกำลัง coding...","critiquing":"🔍 วิชัยกำลัง reviewing...","hitl_2":"⏸️ ตรวจสอบโค้ด",
+        "pitching":"🎤 อรุณีกำลัง preparing...","complete":"✅ เสร็จสมบูรณ์!","error":"❌ เกิดข้อผิดพลาด",
     }.get(layer, layer)
 
     theme_val = state.get("theme") or "Hackathon"
@@ -328,13 +330,13 @@ def render_chat():
     if layer == "hitl_1" and not state.get("selected_idea"):
         ideas = state.get("ideas", [])
         if ideas:
-            has_sarah = any(m.get("agent_name") == "Sarah" for m in st.session_state.msgs)
-            has_max_response = any(
-                m.get("agent_name") == "Max" and "ตอบกลับ" in m.get("message", "")
+            has_wanphen = any(m.get("agent_name") == "วันเพ็ญ" for m in st.session_state.msgs)
+            has_sudet_response = any(
+                m.get("agent_name") == "สุรเดช" and ("ตอบกลับ" in m.get("message", "") or "ตอบกลับ" in m.get("message", ""))
                 for m in st.session_state.msgs
             )
             
-            if has_sarah and has_max_response:
+            if has_wanphen and has_sudet_response:
                 st.markdown("### 🎯 เลือกไอเดียที่ต้องการ")
                 st.caption("คลิกเลือกไอเดีย แล้ว AI จะเริ่มพัฒนาต่อ")
                 cols = st.columns(min(len(ideas), 3))
@@ -352,8 +354,8 @@ def render_chat():
                 st.markdown("""
                 <div style="text-align:center;padding:1.5rem;background:white;border-radius:16px;box-shadow:0 2px 12px rgba(0,0,0,0.05)">
                     <div style="font-size:2.5rem;margin-bottom:0.5rem">⚖️</div>
-                    <div style="font-weight:700;color:#FF6B00;margin-bottom:0.25rem">กำลังรอความเห็นจาก Sarah...</div>
-                    <div style="font-size:0.85rem;color:#999">Sarah กำลังวิเคราะห์และให้คะแนนไอเดียอยู่ โปรดรอซักครู่</div>
+                    <div style="font-weight:700;color:#FF6B00;margin-bottom:0.25rem">กำลังรอความเห็นจากวันเพ็ญ...</div>
+                    <div style="font-size:0.85rem;color:#999">วันเพ็ญกำลังวิเคราะห์และให้คะแนนไอเดียอยู่ โปรดรอซักครู่</div>
                 </div>
                 """, unsafe_allow_html=True)
 
