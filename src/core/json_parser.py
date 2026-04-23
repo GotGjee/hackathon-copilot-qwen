@@ -79,7 +79,7 @@ class StructuredOutputParser:
         """
         Extract complete JSON by finding matching braces.
         Handles nested JSON within string values.
-        If JSON is truncated, tries to close it.
+        If JSON is truncated, tries to close it properly.
         """
         # Find the first opening brace
         start_idx = raw_text.find('{')
@@ -90,7 +90,10 @@ class StructuredOutputParser:
         brace_count = 0
         in_string = False
         escape_next = False
-        last_string_end = -1
+        last_valid_end = start_idx
+        bracket_depths = []  # Track open brackets for arrays
+        in_array_string = False
+        
         for i, char in enumerate(raw_text[start_idx:], start_idx):
             if escape_next:
                 escape_next = False
@@ -101,7 +104,7 @@ class StructuredOutputParser:
             if char == '"':
                 in_string = not in_string
                 if not in_string:
-                    last_string_end = i
+                    last_valid_end = i
                 continue
             if not in_string:
                 if char == '{':
@@ -110,14 +113,27 @@ class StructuredOutputParser:
                     brace_count -= 1
                     if brace_count == 0:
                         return raw_text[start_idx:i+1]
+                elif char == '[':
+                    bracket_depths.append(i)
+                elif char == ']':
+                    if bracket_depths:
+                        bracket_depths.pop()
+                    last_valid_end = i
 
-        # If we get here, JSON is truncated. Try to close it.
+        # If we get here, JSON is truncated. Try to close it properly.
         if brace_count > 0:
-            # Close any open string first
             result = raw_text[start_idx:]
+            # Trim to last valid string content if we're inside a string
             if in_string:
-                result = result[:last_string_end - start_idx + 1] + '"'
+                # Find the last complete key-value pair and close properly
+                result = result[:last_valid_end - start_idx + 1]
                 in_string = False
+            
+            # Close any open arrays
+            while bracket_depths:
+                result += ']'
+                bracket_depths.pop()
+            
             # Close open braces
             while brace_count > 0:
                 result += '}'
@@ -156,6 +172,86 @@ class StructuredOutputParser:
             raise ValueError(f"Schema validation failed: {str(e)}")
 
     @classmethod
+    def fix_json_string(cls, json_str: str) -> str:
+        """
+        Attempt to fix common JSON syntax errors.
+        
+        Args:
+            json_str: Potentially invalid JSON string
+            
+        Returns:
+            Fixed JSON string
+        """
+        fixed = json_str
+        
+        # Fix unescaped quotes within string values
+        # This handles cases like: "message": "He said "hello""
+        # by converting to: "message": "He said \"hello\""
+        fixed = cls._fix_unescaped_quotes(fixed)
+        
+        # Fix trailing commas
+        fixed = re.sub(r',(\s*[}\]])', r'\1', fixed)
+        
+        # Fix missing commas between key-value pairs
+        fixed = re.sub(r'"\s*\n\s*"', '",\n"', fixed)
+        
+        # Fix single quotes to double quotes (only for keys/values, not content)
+        # This is risky, so we only do it for obvious cases
+        
+        return fixed
+    
+    @classmethod
+    def _fix_unescaped_quotes(cls, json_str: str) -> str:
+        """
+        Fix unescaped quotes within JSON string values.
+        This is a common issue when AI generates JSON with quotes inside string values.
+        """
+        result = []
+        i = 0
+        in_string = False
+        escape_next = False
+        
+        while i < len(json_str):
+            char = json_str[i]
+            
+            if escape_next:
+                result.append(char)
+                escape_next = False
+                i += 1
+                continue
+            
+            if char == '\\':
+                result.append(char)
+                escape_next = True
+                i += 1
+                continue
+            
+            if char == '"':
+                if not in_string:
+                    # Start of string
+                    in_string = True
+                    result.append(char)
+                else:
+                    # Could be end of string or unescaped quote within string
+                    # Check if next non-whitespace char is : or , or } or ]
+                    next_chars = json_str[i+1:i+10].lstrip()
+                    if next_chars and next_chars[0] in ':,}]':
+                        # This is a proper end of string
+                        in_string = False
+                        result.append(char)
+                    else:
+                        # This is an unescaped quote within string, escape it
+                        result.append('\\')
+                        result.append(char)
+                i += 1
+                continue
+            
+            result.append(char)
+            i += 1
+        
+        return ''.join(result)
+
+    @classmethod
     def parse_dict(cls, raw_text: str) -> Dict[str, Any]:
         """
         Parse raw text into a dictionary without schema validation.
@@ -178,8 +274,18 @@ class StructuredOutputParser:
             data = json.loads(json_str)
             return data
         except json.JSONDecodeError as e:
-            logger.error(f"JSON decode error: {str(e)}\nContent: {json_str[:200]}...")
-            raise ValueError(f"Invalid JSON: {str(e)}")
+            logger.warning(f"JSON decode error (attempting fix): {str(e)}")
+            
+            # Try to fix common JSON errors
+            fixed_json = cls.fix_json_string(json_str)
+            
+            try:
+                data = json.loads(fixed_json)
+                logger.info("JSON was successfully fixed")
+                return data
+            except json.JSONDecodeError as e2:
+                logger.error(f"JSON decode error after fix attempt: {str(e2)}\nOriginal: {json_str[:500]}...\nFixed: {fixed_json[:500]}...")
+                raise ValueError(f"Invalid JSON (could not auto-fix): {str(e2)}")
 
     @classmethod
     def create_error_feedback(cls, error: str) -> str:
