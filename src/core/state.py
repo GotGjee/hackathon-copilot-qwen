@@ -95,14 +95,62 @@ class PitchNarrative(BaseModel):
     future_vision: str
 
 
+class ColorPalette(BaseModel):
+    """Color palette for the presentation."""
+    primary_color: str = "#4A90E2"  # Primary brand color
+    secondary_color: str = "#F5A623"  # Accent color
+    background_color: str = "#FFFFFF"  # Slide background
+    text_color: str = "#333333"  # Main text color
+    accent_color: str = "#7ED321"  # Highlight color
+    gradient_start: str = ""  # Optional gradient start
+    gradient_end: str = ""  # Optional gradient end
+
+
+class FontStyle(BaseModel):
+    """Font style recommendations."""
+    title_font: str = "Montserrat Bold"
+    subtitle_font: str = "Open Sans"
+    body_font: str = "Roboto"
+    title_size: int = 36
+    body_size: int = 18
+    accent_size: int = 14
+
+
+class ImageSuggestion(BaseModel):
+    """Image/icon suggestion for a slide."""
+    description: str = ""  # What the image should show
+    icon_keywords: List[str] = Field(default_factory=list)  # Keywords for icon search
+    image_type: str = "icon"  # icon, photo, illustration, chart, screenshot
+    placement: str = "right"  # left, right, center, background
+    opacity: float = 1.0  # Image opacity (0.0-1.0)
+
+
+class TransitionStyle(BaseModel):
+    """Slide transition recommendations."""
+    transition_type: str = "fade"  # fade, slide, zoom, dissolve, none
+    duration_ms: int = 500  # Transition duration in milliseconds
+    easing: str = "ease-in-out"  # ease-in-out, linear, ease-out
+
+
 class Slide(BaseModel):
-    """Slide in the pitch deck."""
+    """Slide in the pitch deck - detailed specification for design tools."""
     slide_number: int
     title: str
     subtitle: str
     bullet_points: List[str] = Field(default_factory=list)
-    visual_suggestion: str
-    design_note: str
+    visual_suggestion: str  # Main visual description
+    design_note: str  # Layout and styling guidance
+    
+    # NEW: Detailed specifications for design tools (Canva, Figma, etc.)
+    layout_type: str = "two-column"  # title-only, two-column, center-focus, full-bleed, grid
+    content_sections: List[str] = Field(default_factory=list)  # Detailed content for each section
+    icon_suggestions: List[ImageSuggestion] = Field(default_factory=list)  # Icon/image recommendations
+    background_style: str = "solid"  # solid, gradient, image, pattern
+    color_overrides: Optional[ColorPalette] = None  # Per-slide color overrides
+    animation_notes: str = ""  # Animation suggestions for this slide
+    speaker_script: str = ""  # What to say for this slide
+    estimated_duration_seconds: int = 30  # How long to spend on this slide
+    canva_template_hint: str = ""  # Suggested Canva template type
 
 
 class ScriptSection(BaseModel):

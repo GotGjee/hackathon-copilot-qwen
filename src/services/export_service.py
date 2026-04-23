@@ -7,8 +7,17 @@ import os
 import zipfile
 from io import BytesIO
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 from datetime import datetime
+
+try:
+    from pptx import Presentation
+    from pptx.util import Inches, Pt, Emu
+    from pptx.enum.text import PP_ALIGN
+    from pptx.dml.color import RGBColor
+    HAS_PPTX = True
+except ImportError:
+    HAS_PPTX = False
 
 
 class ExportService:
@@ -186,6 +195,221 @@ Date: {datetime.now().isoformat()}
             lines.append("")
         return "\n".join(lines)
 
+    def export_slide_pptx(
+        self,
+        session_id: str,
+        slides: list,
+        title: str = "project",
+        color_palette: Optional[dict] = None,
+        font_style: Optional[dict] = None,
+    ) -> str:
+        """
+        Create a PowerPoint (.pptx) file from slide data.
+        
+        Args:
+            session_id: Session identifier
+            slides: List of Slide models or dicts
+            title: Project title
+            color_palette: Optional color palette dict
+            font_style: Optional font style dict
+            
+        Returns:
+            Path to the created .pptx file
+        """
+        if not HAS_PPTX:
+            raise ImportError("python-pptx is required for PowerPoint export. Run: pip install python-pptx")
+        
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{title.replace(' ', '_')}_{session_id}_{timestamp}.pptx"
+        filepath = self.export_dir / filename
+        
+        # Create presentation
+        prs = Presentation()
+        prs.slide_width = Inches(13.333)  # Widescreen 16:9
+        prs.slide_height = Inches(7.5)
+        
+        # Get colors
+        colors = self._get_colors(color_palette)
+        fonts = self._get_fonts(font_style)
+        
+        # Convert slides to consistent format
+        slides_data = self._normalize_slides(slides)
+        
+        for slide_data in slides_data:
+            slide_layout = prs.slide_layouts[6]  # Blank layout
+            slide = prs.slides.add_slide(slide_layout)
+            
+            # Add background color
+            self._set_slide_background(slide, colors["background"])
+            
+            # Add title
+            self._add_textbox(
+                slide,
+                left=Inches(0.8),
+                top=Inches(0.5),
+                width=Inches(11.7),
+                height=Inches(1.2),
+                text=slide_data.get("title", ""),
+                font_name=fonts["title"],
+                font_size=fonts["title_size"],
+                font_color=colors["primary"],
+                bold=True,
+            )
+            
+            # Add subtitle
+            if slide_data.get("subtitle"):
+                self._add_textbox(
+                    slide,
+                    left=Inches(0.8),
+                    top=Inches(1.6),
+                    width=Inches(11.7),
+                    height=Inches(0.6),
+                    text=slide_data.get("subtitle", ""),
+                    font_name=fonts["subtitle"],
+                    font_size=fonts["subtitle_size"],
+                    font_color=colors["secondary"],
+                )
+            
+            # Add bullet points
+            bullet_points = slide_data.get("bullet_points", [])
+            if bullet_points:
+                self._add_bullet_points(
+                    slide,
+                    left=Inches(0.8),
+                    top=Inches(2.5),
+                    width=Inches(7),
+                    points=bullet_points,
+                    font_name=fonts["body"],
+                    font_size=fonts["body_size"],
+                    font_color=colors["text"],
+                )
+            
+            # Add visual suggestion as a note box
+            if slide_data.get("visual_suggestion"):
+                self._add_textbox(
+                    slide,
+                    left=Inches(8.5),
+                    top=Inches(2.5),
+                    width=Inches(4),
+                    height=Inches(3),
+                    text=f"🖼️ Visual:\n{slide_data.get('visual_suggestion', '')}",
+                    font_name=fonts["body"],
+                    font_size=14,
+                    font_color=colors["accent"],
+                )
+            
+            # Add design note as speaker note
+            if slide_data.get("speaker_script"):
+                notes_slide = slide.notes_slide
+                notes_slide.notes_text_frame.text = f"SPEAKER SCRIPT:\n{slide_data.get('speaker_script', '')}"
+            
+            # Add Canva hint in notes too
+            if slide_data.get("canva_template_hint"):
+                notes_slide = slide.notes_slide
+                existing = notes_slide.notes_text_frame.text
+                notes_slide.notes_text_frame.text = f"{existing}\n\n🎨 Canva Template: {slide_data.get('canva_template_hint')}"
+        
+        # Save
+        prs.save(str(filepath))
+        return str(filepath)
+    
+    def _get_colors(self, palette: Optional[dict]) -> dict:
+        """Get color scheme from palette or use defaults."""
+        if palette:
+            return {
+                "primary": self._hex_to_rgb(palette.get("primary_color", "#4A90E2")),
+                "secondary": self._hex_to_rgb(palette.get("secondary_color", "#F5A623")),
+                "background": self._hex_to_rgb(palette.get("background_color", "#FFFFFF")),
+                "text": self._hex_to_rgb(palette.get("text_color", "#333333")),
+                "accent": self._hex_to_rgb(palette.get("accent_color", "#7ED321")),
+            }
+        return {
+            "primary": RGBColor(0x4A, 0x90, 0xE2),
+            "secondary": RGBColor(0xF5, 0xA6, 0x23),
+            "background": RGBColor(0xFF, 0xFF, 0xFF),
+            "text": RGBColor(0x33, 0x33, 0x33),
+            "accent": RGBColor(0x7E, 0xD3, 0x21),
+        }
+    
+    def _get_fonts(self, style: Optional[dict]) -> dict:
+        """Get font scheme from style or use defaults."""
+        if style:
+            return {
+                "title": style.get("title_font", "Calibri"),
+                "subtitle": style.get("subtitle_font", "Calibri"),
+                "body": style.get("body_font", "Calibri"),
+                "title_size": style.get("title_size", 36),
+                "subtitle_size": style.get("subtitle_size", 24),
+                "body_size": style.get("body_size", 18),
+            }
+        return {
+            "title": "Calibri",
+            "subtitle": "Calibri",
+            "body": "Calibri",
+            "title_size": 36,
+            "subtitle_size": 24,
+            "body_size": 18,
+        }
+    
+    def _hex_to_rgb(self, hex_color: str) -> RGBColor:
+        """Convert hex color to RGBColor."""
+        hex_color = hex_color.lstrip("#")
+        try:
+            r, g, b = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+            return RGBColor(r, g, b)
+        except (ValueError, IndexError):
+            return RGBColor(0x33, 0x33, 0x33)
+    
+    def _set_slide_background(self, slide, color: RGBColor):
+        """Set slide background color."""
+        background = slide.background
+        fill = background.fill
+        fill.solid()
+        fill.fore_color.rgb = color
+    
+    def _add_textbox(self, slide, left, top, width, height, text, font_name, font_size, font_color, bold=False):
+        """Add a text box to a slide."""
+        txBox = slide.shapes.add_textbox(left, top, width, height)
+        tf = txBox.text_frame
+        tf.word_wrap = True
+        p = tf.paragraphs[0]
+        p.text = text
+        p.font.name = font_name
+        p.font.size = Pt(font_size)
+        p.font.color.rgb = font_color
+        p.font.bold = bold
+        return txBox
+    
+    def _add_bullet_points(self, slide, left, top, width, points, font_name, font_size, font_color):
+        """Add bullet points to a slide."""
+        txBox = slide.shapes.add_textbox(left, top, width, Inches(4))
+        tf = txBox.text_frame
+        tf.word_wrap = True
+        
+        for i, point in enumerate(points):
+            if i == 0:
+                p = tf.paragraphs[0]
+            else:
+                p = tf.add_paragraph()
+            p.text = f"• {point}"
+            p.font.name = font_name
+            p.font.size = Pt(font_size)
+            p.font.color.rgb = font_color
+            p.space_after = Pt(12)
+            p.level = 0
+    
+    def _normalize_slides(self, slides: list) -> list:
+        """Convert slides to consistent dict format."""
+        result = []
+        for s in slides:
+            if hasattr(s, 'model_dump'):
+                result.append(s.model_dump())
+            elif isinstance(s, dict):
+                result.append(s)
+            else:
+                result.append({"title": str(s)})
+        return result
+    
     def get_exports(self) -> list:
         """List all export files."""
-        return [str(f) for f in self.export_dir.glob("*.zip")]
+        return [str(f) for f in self.export_dir.glob("*.zip")] + [str(f) for f in self.export_dir.glob("*.pptx")]

@@ -776,11 +776,15 @@ class Orchestrator:
             title=selected.title if selected else "",
             narrative=narrative_result,
         )
-        state.slides = slides_result
+        state.slides = slides_result.slides
 
         # Slides อรุณี responds to Storyteller อรุณี
         slides_nova_msg = f"💬 **อรุณี (Slides) ตอบกลับอรุณี (Storyteller):**\n\n"
-        slides_nova_msg += f"เรื่องเล่าเยี่ยมมากค่ะ! พี่ออกแบบ slide deck ให้แล้ว {len(slides_result.slides) if hasattr(slides_result, 'slides') else 'N/A'} slides\n"
+        slides_nova_msg += f"เรื่องเล่าเยี่ยมมากค่ะ! พี่ออกแบบ slide deck ให้แล้ว {len(slides_result.slides)} slides\n"
+        if slides_result.color_palette:
+            slides_nova_msg += f"🎨 Color theme: Primary {slides_result.color_palette.primary_color}\n"
+        if slides_result.font_style:
+            slides_nova_msg += f"📝 Font: {slides_result.font_style.title_font} + {slides_result.font_style.body_font}\n"
         slides_nova_msg += f"แต่ละ slide ถูกจัด layout ให้สวยงามและสื่อสารได้ชัดเจน\n"
         slides_nova_msg += f"พร้อมส่งต่อให้ Speech Writer แล้วค่ะ!"
         
@@ -804,14 +808,15 @@ class Orchestrator:
         script_agent = ScriptAgent(self.api_client)
         script_result = await script_agent.create_script(
             title=selected.title if selected else "",
-            slides=slides_result,
+            slides=slides_result.slides,
             narrative=narrative_result,
         )
         state.script = script_result
 
         # Script อรุณี responds
+        script_sections = script_result if isinstance(script_result, list) else (script_result.sections if hasattr(script_result, 'sections') else [])
         script_nova_msg = f"💬 **อรุณี (Script) ตอบกลับทีม:**\n\n"
-        script_nova_msg += f"ได้รับ slides และ narrative แล้วค่ะ! พี่เขียน speaker script ให้แล้ว {len(script_result.sections) if hasattr(script_result, 'sections') else 'N/A'} sections\n"
+        script_nova_msg += f"ได้รับ slides และ narrative แล้วค่ะ! พี่เขียน speaker script ให้แล้ว {len(script_sections)} sections\n"
         script_nova_msg += f"script ถูกออกแบบให้กระชับ น่าสนใจ และ fit กับเวลา pitch\n"
         script_nova_msg += f"**ทีมอรุณีพร้อมแล้วค่ะ! ขอให้ pitch ออกมาดีที่สุด!** 🎤"
         
