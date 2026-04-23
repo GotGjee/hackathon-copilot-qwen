@@ -18,6 +18,13 @@ try:
     HAS_PPTX = True
 except ImportError:
     HAS_PPTX = False
+    # Provide fallbacks for type hints
+    RGBColor = object
+    Inches = lambda x: x
+    Pt = lambda x: x
+    Emu = lambda x: x
+    Presentation = None
+    PP_ALIGN = None
 
 
 class ExportService:

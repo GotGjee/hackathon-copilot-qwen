@@ -240,6 +240,106 @@ CSS = """
     overflow-y: auto;
 }
 
+/* Thinking Indicator */
+.thinking-indicator {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    margin: 8px 0;
+    background: linear-gradient(135deg, #FFF3E0, #FFE0B2);
+    border-radius: 20px;
+    border-left: 4px solid #FF6B00;
+    animation: thinkingPulse 1.5s ease-in-out infinite;
+}
+.thinking-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    animation: thinkingBounce 1s ease-in-out infinite;
+}
+.thinking-text {
+    font-size: 0.85rem;
+    color: #FF6B00;
+    font-weight: 600;
+}
+.thinking-dots {
+    display: flex;
+    gap: 4px;
+    margin-left: 8px;
+}
+.thinking-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #FF6B00;
+    animation: dotPulse 1.4s ease-in-out infinite;
+}
+.thinking-dot:nth-child(2) { animation-delay: 0.2s; }
+.thinking-dot:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes thinkingPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+@keyframes thinkingBounce {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+}
+@keyframes dotPulse {
+    0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+    40% { transform: scale(1); opacity: 1; }
+}
+
+/* Typing Animation for Messages */
+.typing-message {
+    overflow: hidden;
+    border-right: 2px solid #FF6B00;
+    white-space: nowrap;
+    animation: typing 2s steps(40, end), blinkCaret 0.75s step-end infinite;
+}
+@keyframes typing {
+    from { width: 0 }
+    to { width: 100% }
+}
+@keyframes blinkCaret {
+    from, to { border-color: transparent }
+    50% { border-color: #FF6B00; }
+}
+
+/* Message Fade In Animation */
+.msg {
+    animation: fadeInUp 0.4s ease-out;
+}
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Workflow Step Highlight */
+.workflow-active {
+    background: linear-gradient(135deg, #FF6B00, #FF8F00);
+    color: white;
+    padding: 8px 16px;
+    border-radius: 12px;
+    font-weight: 700;
+    animation: workflowGlow 2s ease-in-out infinite;
+}
+@keyframes workflowGlow {
+    0%, 100% { box-shadow: 0 0 8px rgba(255,107,0,0.4); }
+    50% { box-shadow: 0 0 20px rgba(255,107,0,0.8); }
+}
+
 /* Bubble styles */
 .msg {
     display: flex;
@@ -591,14 +691,85 @@ def render_code_viewer(filepath: str, content: str, language: str = "python") ->
     '''
 
 
+def render_thinking_indicator(agent_name: str) -> str:
+    """Render animated thinking indicator for an agent."""
+    ag = AGENTS.get(agent_name, {"icon": "🤖", "color": "#999", "bg": "#F5F5F5"})
+    ic = ag["icon"]
+    thinking_texts = {
+        "สุรเดช": "สุรเดชกำลังคิดไอเดีย...",
+        "วันเพ็ญ": "วันเพ็ญกำลังวิเคราะห์...",
+        "สมศักดิ์": "สมศักดิ์กำลังวางแผน...",
+        "พิมพ์ใจ": "พิมพ์ใจกำลังออกแบบ...",
+        "ธนภัทร": "ธนภัทรกำลังเขียนโค้ด...",
+        "วิชัย": "วิชัยกำลังตรวจสอบ...",
+        "อรุณี": "อรุณีกำลังเตรียมเรื่องเล่า...",
+        "อรุณี (Slides)": "อรุณีกำลังออกแบบ slides...",
+        "อรุณี (Script)": "อรุณีกำลังเขียน script...",
+    }
+    thinking_text = thinking_texts.get(agent_name, f"{agent_name}กำลังคิด...")
+    
+    return f'''
+    <div class="thinking-indicator">
+        <div class="thinking-avatar" style="background:{ag['bg']}">{ic}</div>
+        <span class="thinking-text">{thinking_text}</span>
+        <div class="thinking-dots">
+            <span class="thinking-dot"></span>
+            <span class="thinking-dot"></span>
+            <span class="thinking-dot"></span>
+        </div>
+    </div>
+    '''
+
+def render_workflow_progress(layer: str) -> str:
+    """Render visual workflow steps showing current progress."""
+    steps = [
+        ("idle", "🟡", "เริ่มต้น"),
+        ("ideation", "🧠", "คิดไอเดีย"),
+        ("judging", "⚖️", "ประเมิน"),
+        ("hitl_1", "⏸️", "เลือกไอเดีย"),
+        ("planning", "📋", "วางแผน"),
+        ("architecting", "🏗️", "ออกแบบ"),
+        ("building", "🔨", "เขียนโค้ด"),
+        ("critiquing", "🔍", "ตรวจสอบ"),
+        ("hitl_2", "⏸️", "รีวิวโค้ด"),
+        ("pitching", "🎤", "เตรียม pitch"),
+        ("complete", "✅", "เสร็จ!"),
+    ]
+    
+    current_idx = 0
+    for i, (l, _, _) in enumerate(steps):
+        if l == layer:
+            current_idx = i
+            break
+    
+    html_parts = ['<div style="display:flex;flex-wrap:wrap;gap:6px;padding:12px;justify-content:center">']
+    for i, (l, emoji, label) in enumerate(steps):
+        if i < current_idx:
+            # Completed
+            html_parts.append(
+                f'<div style="background:#E8F5E9;padding:6px 10px;border-radius:10px;font-size:0.7rem;opacity:0.7">'
+                f'{emoji} {label}</div>'
+            )
+        elif i == current_idx:
+            # Active
+            html_parts.append(
+                f'<div class="workflow-active">{emoji} {label}</div>'
+            )
+        else:
+            # Pending
+            html_parts.append(
+                f'<div style="background:#F5F5F5;padding:6px 10px;border-radius:10px;font-size:0.7rem;color:#999">'
+                f'{emoji} {label}</div>'
+            )
+    html_parts.append('</div>')
+    return '\n'.join(html_parts)
+
 def render_bubbles(msgs):
     parts = []
     for m in msgs:
         et = m.get("event_type", "message")
         an = m.get("agent_name", "System")
         txt = m.get("message", "")
-        if et == "thinking":
-            continue
         ag = AGENTS.get(an, {"icon": "🤖", "color": "#999", "bg": "#F5F5F5"})
         ic, co, bg = ag["icon"], ag["color"], ag["bg"]
         if et in ("phase_start", "phase_complete"):
@@ -724,6 +895,40 @@ def render_chat():
         </div>
     </div>
     """, unsafe_allow_html=True)
+
+    # Workflow Visualization (NEW!)
+    st.markdown(f"""
+    <div class="chat-container">
+        <div style="padding:8px 12px;background:white;border-bottom:1px solid #EEE;font-size:0.7rem;color:#999;text-align:center">
+            🔄 AI Agent Workflow Progress
+        </div>
+        {render_workflow_progress(layer)}
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Show Thinking Indicator when AI is working (not paused, not complete)
+    is_ai_thinking = not state.get("is_paused", False) and layer not in ["complete", "idle", "error", "hitl_1", "hitl_2"]
+    
+    # Determine which agent is thinking based on current layer
+    agent_thinking_map = {
+        "ideation": "สุรเดช",
+        "judging": "วันเพ็ญ",
+        "planning": "สมศักดิ์",
+        "architecting": "พิมพ์ใจ",
+        "building": "ธนภัทร",
+        "critiquing": "วิชัย",
+        "pitching": "อรุณี",
+    }
+    thinking_agent = agent_thinking_map.get(layer, "")
+    
+    if is_ai_thinking and thinking_agent:
+        st.markdown(f"""
+        <div class="chat-container">
+            <div class="msgs">
+                {render_thinking_indicator(thinking_agent)}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
     # Messages
     if st.session_state.msgs:
